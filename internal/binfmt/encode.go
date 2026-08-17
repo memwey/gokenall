@@ -67,8 +67,14 @@ func validate(d *Dataset) error {
 		if int(c.Pref) >= PrefectureCount {
 			return fmt.Errorf("binfmt: city %d (%s) has prefecture index %d", i, c.Kanji, c.Pref)
 		}
+		if c.JIS > maxJIS {
+			return fmt.Errorf("binfmt: city %d (%s) has JIS code %d, which is more than 5 digits", i, c.Kanji, c.JIS)
+		}
 	}
 	for i, r := range d.Records {
+		if r.Zip > maxZip {
+			return fmt.Errorf("binfmt: record %d has zip code %d, which is more than 7 digits", i, r.Zip)
+		}
 		if int(r.City) >= len(d.Cities) {
 			return fmt.Errorf("binfmt: record %d (zip %07d) has city index %d of %d", i, r.Zip, r.City, len(d.Cities))
 		}

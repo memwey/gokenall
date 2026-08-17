@@ -51,6 +51,11 @@ var updatedRe = regexp.MustCompile(`(\d{4})年(\d{1,2})月(\d{1,2})日更新\s*<
 
 var hrefRe = regexp.MustCompile(`href="([^"]+\.zip)"`)
 
+// maxDownload caps what a single response may hand us. The archives are a
+// couple of megabytes; this is only here so a redirect to something enormous
+// cannot run the machine out of memory.
+const maxDownload = 128 << 20
+
 // fetched is a downloaded dataset plus the date its page advertised.
 type fetched struct {
 	csv     []byte
@@ -186,7 +191,7 @@ func (f *fetcher) page(ctx context.Context, src source) (body []byte, finalURL s
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("GET %s: %s", src.page, resp.Status)
 	}
-	body, err = io.ReadAll(resp.Body)
+	body, err = io.ReadAll(io.LimitReader(resp.Body, maxDownload))
 	if err != nil {
 		return nil, "", err
 	}
@@ -216,9 +221,12 @@ func (f *fetcher) body(ctx context.Context, rawURL, cacheName string) ([]byte, e
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: %s", rawURL, resp.Status)
 	}
-	b, err := io.ReadAll(resp.Body)
+	b, err := io.ReadAll(io.LimitReader(resp.Body, maxDownload))
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", rawURL, err)
+	}
+	if len(b) == maxDownload {
+		return nil, fmt.Errorf("%s is at least %s, which is far larger than Japan Post publishes", rawURL, humanBytes(maxDownload))
 	}
 	logf("  %s (%s from %s)", cacheName, humanBytes(len(b)), rawURL)
 	f.toCache(cacheName, b)

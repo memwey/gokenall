@@ -141,6 +141,72 @@ func TestEncodeRejectsUnsortedRecords(t *testing.T) {
 	}
 }
 
+// digits renders a code modulo its width, so a value too wide to print would
+// come out as a different, perfectly plausible code. The format rejects it.
+func TestEncodeRejectsOverWideCodes(t *testing.T) {
+	t.Run("zip", func(t *testing.T) {
+		d := sample()
+		d.Records[len(d.Records)-1].Zip = 10000001 // would print as "0000001"
+		if _, err := Encode(&bytes.Buffer{}, d); err == nil {
+			t.Fatal("Encode accepted an 8-digit zip code")
+		}
+	})
+	t.Run("JIS", func(t *testing.T) {
+		d := sample()
+		d.Cities[0].JIS = 131010 // would print as "31010"
+		if _, err := Encode(&bytes.Buffer{}, d); err == nil {
+			t.Fatal("Encode accepted a 6-digit JIS code")
+		}
+	})
+}
+
+// A count is used to size an allocation before the elements behind it are
+// read, so it has to be checked against what is left of the payload first.
+func TestDecodeRejectsCountsLargerThanThePayload(t *testing.T) {
+	tests := map[string]func() []byte{
+		"strings": func() []byte {
+			var p []byte
+			p = binary.AppendVarint(p, 0)
+			p = binary.AppendVarint(p, 0)
+			p = binary.AppendUvarint(p, 1<<27) // 134 million offsets, ~512 MiB
+			p = binary.AppendUvarint(p, 0)
+			return p
+		},
+		"strings for the blob they claim": func() []byte {
+			var p []byte
+			p = binary.AppendVarint(p, 0)
+			p = binary.AppendVarint(p, 0)
+			// Fewer than the bytes left, but far more than a 2-byte blob can
+			// hold: each distinct non-empty string needs a byte of its own.
+			p = binary.AppendUvarint(p, 50)
+			p = binary.AppendUvarint(p, 2)
+			p = append(p, "ab"...)
+			p = append(p, bytes.Repeat([]byte{0}, 200)...)
+			return p
+		},
+		"cities": func() []byte {
+			var p []byte
+			p = binary.AppendVarint(p, 0)
+			p = binary.AppendVarint(p, 0)
+			p = binary.AppendUvarint(p, 1)
+			p = binary.AppendUvarint(p, 0)
+			p = binary.AppendUvarint(p, 0)
+			for range PrefectureCount * 3 {
+				p = binary.AppendUvarint(p, 0)
+			}
+			p = binary.AppendUvarint(p, 1<<26)
+			return p
+		},
+	}
+	for name, build := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := unmarshal(build()); err == nil {
+				t.Error("unmarshal accepted a count the payload cannot back")
+			}
+		})
+	}
+}
+
 func TestEncodeRejectsDanglingIndices(t *testing.T) {
 	t.Run("city", func(t *testing.T) {
 		d := sample()

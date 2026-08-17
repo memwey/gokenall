@@ -15,9 +15,6 @@ import (
 // this only exists so a corrupt or hostile file cannot exhaust memory.
 const maxPayload = 1 << 28
 
-// maxZip is the largest seven digit code.
-const maxZip = 9999999
-
 // Store is a decoded database. Strings are slices of one shared blob, so
 // reading a record costs no allocation.
 type Store struct {
@@ -102,6 +99,15 @@ func unmarshal(payload []byte) (*Store, error) {
 		return nil, err
 	}
 	s.blob = string(c.bytes(blobLen))
+	if c.err != nil {
+		return nil, c.err
+	}
+	// Every string but the empty one occupies at least one blob byte, and the
+	// table is deduplicated, so the blob bounds how many there can be. Without
+	// this a few hundred bytes could ask for a gigabyte of offsets.
+	if numStrings > blobLen+1 {
+		return nil, fmt.Errorf("binfmt: %d strings cannot fit in a %d byte blob", numStrings, blobLen)
+	}
 	s.strOff = make([]uint32, numStrings+1)
 	// Accumulating in uint64 and bounding against the blob on every step is
 	// what makes str safe to slice without checking. Narrowing to uint32 here
@@ -142,6 +148,9 @@ func unmarshal(payload []byte) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The deltas are unsigned and accumulate in a uint64 bounded on every step,
+	// so the result is sorted by construction. Range binary searches it, and
+	// that is the only thing keeping the search honest.
 	s.zips = make([]uint32, n)
 	var zip uint64
 	for i := range s.zips {
@@ -319,15 +328,17 @@ func (c *cursor) varint() int64 {
 	return v
 }
 
-// count reads a length prefix and refuses one large enough to be a decoding
-// bug or a crafted file, before it is used to size an allocation.
+// count reads a length prefix and refuses one that the rest of the payload
+// could not possibly hold, before it is used to size an allocation. Every
+// element costs at least one more byte downstream — a length varint, a field
+// varint, a blob byte — so the bytes left are an upper bound on all of them.
 func (c *cursor) count(what string) (int, error) {
 	v := c.uvarint()
 	if c.err != nil {
 		return 0, c.err
 	}
-	if v > maxPayload {
-		return 0, fmt.Errorf("binfmt: implausible %s count %d", what, v)
+	if remaining := len(c.buf) - c.pos; v > uint64(remaining) {
+		return 0, fmt.Errorf("binfmt: %s count is %d with only %d bytes left", what, v, remaining)
 	}
 	return int(v), nil
 }

@@ -186,7 +186,10 @@ func verify(path string, d *binfmt.Dataset) error {
 	}
 	for i := range d.Records {
 		got, want := store.At(i), d.Records[i]
-		if got.Zip != want.Zip || got.Town != want.Town || got.Note != want.Note || got.NoteKana != want.NoteKana || got.Flags != want.Flags {
+		city := d.Cities[want.City]
+		if got.Zip != want.Zip || got.Town != want.Town || got.Note != want.Note ||
+			got.NoteKana != want.NoteKana || got.Flags != want.Flags ||
+			got.JIS != city.JIS || got.City != city.Name || got.Prefecture != d.Prefectures[city.Pref] {
 			return fmt.Errorf("verify %s: record %d round-tripped as %+v, encoded %+v", path, i, got, want)
 		}
 	}

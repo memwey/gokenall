@@ -115,6 +115,20 @@ func TestTitlecase(t *testing.T) {
 	}
 }
 
+func TestCapitalize(t *testing.T) {
+	for _, tt := range []struct{ in, want string }{
+		{"AINOSATO", "Ainosato"},
+		{"1-JO", "1-jo"},
+		{"KITA1-JONISHI", "Kita1-jonishi"},
+		{"KU", "Ku"},
+		{"", ""},
+	} {
+		if got := Capitalize(tt.in); got != tt.want {
+			t.Errorf("Capitalize(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestPassesThroughUnknownRunes(t *testing.T) {
 	// Anything the transliterator cannot read must not corrupt what it can.
 	if got := PostalRomaji("チヨダ-ク"); got != "CHIYODA-KU" {

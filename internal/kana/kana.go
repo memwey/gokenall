@@ -141,12 +141,15 @@ func convert(katakana string, st style) string {
 func Titlecase(romaji string) string {
 	words := strings.Fields(romaji)
 	for i, w := range words {
-		words[i] = capitalize(w)
+		words[i] = Capitalize(w)
 	}
 	return strings.Join(words, " ")
 }
 
-func capitalize(w string) string {
+// Capitalize lower-cases a single word and upper-cases its first rune, but only
+// if that rune is a letter: "AINOSATO" becomes "Ainosato", "1-JO" becomes
+// "1-jo", "KITA1-JONISHI" becomes "Kita1-jonishi".
+func Capitalize(w string) string {
 	rs := []rune(strings.ToLower(w))
 	if len(rs) > 0 && unicode.IsLetter(rs[0]) {
 		rs[0] = unicode.ToUpper(rs[0])

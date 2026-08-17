@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/memwey/utfkenall/internal/kana"
 )
@@ -48,23 +48,12 @@ func prettyCity(s string) string {
 			words[len(words)-1] += "-" + strings.ToLower(tok)
 			continue
 		}
-		words = append(words, capitalize(tok))
+		words = append(words, kana.Capitalize(tok))
 	}
 	return strings.Join(words, " ")
 }
 
 func prettyTown(s string) string { return kana.Titlecase(s) }
-
-// capitalize lower-cases a word and upper-cases its first rune, but only if
-// that rune is a letter: "AINOSATO" -> "Ainosato", "1-JO" -> "1-jo",
-// "KITA1-JONISHI" -> "Kita1-jonishi".
-func capitalize(w string) string {
-	rs := []rune(strings.ToLower(w))
-	if len(rs) > 0 && unicode.IsLetter(rs[0]) {
-		rs[0] = unicode.ToUpper(rs[0])
-	}
-	return string(rs)
-}
 
 // townKey identifies a town across the two datasets. The town component is the
 // cleaned name, so the differing parenthetical annotations in the two files do
@@ -106,20 +95,11 @@ func newRomajiIndex(rows []romeRow) *romajiIndex {
 		if _, dup := ix.towns[key]; !dup {
 			ix.towns[key] = romaji
 		}
-		if !contains(ix.byZip[r.Zip], romaji) {
+		if !slices.Contains(ix.byZip[r.Zip], romaji) {
 			ix.byZip[r.Zip] = append(ix.byZip[r.Zip], romaji)
 		}
 	}
 	return ix
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 func (ix *romajiIndex) city(pref, city string) (string, bool) {

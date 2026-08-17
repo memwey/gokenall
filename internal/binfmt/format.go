@@ -25,6 +25,14 @@ const Version = 2
 // HeaderSize is the number of uncompressed bytes preceding the flate stream.
 const HeaderSize = len(Magic) + 1
 
+// The widths the codes are rendered at. A value beyond these would be printed
+// modulo its width — 10000001 as "0000001" — so both sides of the format reject
+// it rather than emit a plausible wrong answer.
+const (
+	maxZip = 9999999 // 7 digits
+	maxJIS = 99999   // 5 digits
+)
+
 // PrefectureCount is the number of Japanese prefectures. The table is fixed
 // length, indexed by prefecture code minus one.
 const PrefectureCount = 47
