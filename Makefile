@@ -1,69 +1,46 @@
-NAME      := kenall
-VERSION   := $(shell git describe --tags --abbrev=0)
-REVISION  := $(shell git rev-parse --short HEAD)
-GODEP     := $(shell command -v dep 2> /dev/null)
-GOLINT    := $(shell command -v golint 2> /dev/null)
-LDFLAGS   := -X 'main.version=$(VERSION)' -X 'main.revision=$(REVISION)'
-DISTDIR   :=./dist
-VENDORDIR :=./vendor
-EXEC_DIRS := find * -type d -exec
+GO      ?= go
+MODULES := . ./tools/gendata
+
+.PHONY: all
+all: test
 
 .PHONY: test
-test: lint
-	go test -race -v ./...
+test:
+	$(GO) test -race ./... ./tools/gendata/...
 
-.PHONY: godep
-godep:
-ifndef GODEP
-	curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-endif
+.PHONY: vet
+vet:
+	$(GO) vet ./... ./tools/gendata/...
 
-.PHONY: golint
-golint:
-ifndef GOLINT
-	go get -u golang.org/x/lint/golint
-endif
+.PHONY: lint
+lint: vet
+	$(GO) run honnef.co/go/tools/cmd/staticcheck@latest ./... ./tools/gendata/...
 
-.PHONY: deps
-deps: godep
-	dep ensure
+.PHONY: fmt
+fmt:
+	$(GO) fmt ./... ./tools/gendata/...
 
-.PHONY: build
-build: deps
-	go build -ldflags "$(LDFLAGS)" -o bin/$(NAME) cmd/kenall/kenall.go
+# Rebuild data/kenall.bin from Japan Post. Needs network access.
+.PHONY: data
+data:
+	$(GO) generate ./...
+
+# Same, but reuse anything already in tmp/ so repeated runs skip the download.
+.PHONY: data-cached
+data-cached:
+	$(GO) run ./tools/gendata -out data/kenall.bin -cache tmp -v
+
+.PHONY: tidy
+tidy:
+	$(GO) mod tidy
+	cd tools/gendata && GOWORK=off $(GO) mod tidy
+	$(GO) work sync
+
+.PHONY: bench
+bench:
+	$(GO) test -run '^$$' -bench . -benchmem ./...
 
 .PHONY: clean
 clean:
-	go clean
-	rm -rf $(DISTDIR)/*
-	rm -rf $(VENDORDIR)/*
-
-.PHONY: lint
-lint: golint deps
-	go vet ./...
-	golint -set_exit_status `go list ./... | grep -v /vendor/`
-
-.PHONY: install
-install: test
-	go install -ldflags "$(LDFLAGS)" ./cmd/kenall
-
-.PHONY: cross-build
-cross-build: test
-	rm -rf $(DISTDIR)/*
-	for os in darwin linux windows; do \
-		for arch in amd64 386; do \
-			GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 go build -a -ldflags "$(LDFLAGS)" -o dist/$$os-$$arch/$(NAME) cmd/kenall/kenall.go; \
-			if [ "$${os}" = "windows" ]; then \
-				mv dist/$$os-$$arch/$(NAME) dist/$$os-$$arch/$(NAME).exe; \
-			fi; \
-		done; \
-	done
-
-.PHONY: dist
-dist: cross-build
-	cd dist && \
-	$(EXEC_DIRS) cp ../LICENSE {} \; && \
-	$(EXEC_DIRS) cp ../README.md {} \; && \
-	$(EXEC_DIRS) tar -zcf $(NAME)-${VERSION}-{}.tar.gz {} \; && \
-	$(EXEC_DIRS) zip -r $(NAME)-${VERSION}-{}.zip {} \; && \
-	cd ..
+	$(GO) clean
+	rm -rf tmp
