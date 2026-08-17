@@ -133,11 +133,11 @@ agrees with Japan Post on **99.93%** of the 81,278 towns where both publish a
 spelling, and writes `Marunochi` in all twelve cities that have a 丸の内. The 56
 disagreements are all over whether 町 reads *-cho* or *-machi*.
 
-`Prefecture.Romaji` uses conventional English forms (`Tokyo`, `Gunma`) rather
-than Japan Post's `TOKYO TO` and the archaic `GUMMA KEN`. The source spelling
-is preserved rather than discarded: call `addr.PublishedPrefectureRomaji()` or
-`PublishedPrefectureRomaji("東京都")` when exact fidelity to
-`KEN_ALL_ROME.CSV` matters.
+The embedded database stores Japan Post's prefecture spelling unchanged. At
+read time `Prefecture.Romaji` derives the conventional English form (`Tokyo`,
+`Gunma`) from `TOKYO TO` and the archaic `GUMMA KEN`. Call
+`addr.PublishedPrefectureRomaji()` or
+`PublishedPrefectureRomaji("東京都")` to read the source value directly.
 
 The romaji file is revised far less often than the addresses, so it lacks the
 newest codes. Those are transliterated from katakana instead and marked with

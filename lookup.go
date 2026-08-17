@@ -67,7 +67,7 @@ func Prefectures() []Name {
 	src := mustLoad().Prefectures()
 	out := make([]Name, len(src))
 	for i, n := range src {
-		out[i] = name(n)
+		out[i] = prefectureName(n)
 	}
 	return out
 }

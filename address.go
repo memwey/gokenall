@@ -97,6 +97,32 @@ func (a Address) PublishedPrefectureRomaji() string {
 	return romaji
 }
 
+// prefectureName derives the display spelling from the source value stored in
+// the database. Japan Post appends the administrative unit and still spells
+// Gunma as GUMMA; English addresses conventionally use neither.
+func prefectureName(n binfmt.Name) Name {
+	out := name(n)
+	words := strings.Fields(n.Romaji)
+	if len(words) > 1 {
+		switch words[len(words)-1] {
+		case "TO", "FU", "KEN":
+			words = words[:len(words)-1]
+		}
+	}
+	for i, word := range words {
+		if word == "GUMMA" {
+			word = "GUNMA"
+		}
+		word = strings.ToLower(word)
+		if word != "" {
+			word = strings.ToUpper(word[:1]) + word[1:]
+		}
+		words[i] = word
+	}
+	out.Romaji = strings.Join(words, " ")
+	return out
+}
+
 // RawTown returns the town columns exactly as Japan Post publishes them,
 // before this package moves placeholders and annotations out of the name:
 //
@@ -127,7 +153,7 @@ func newAddress(e binfmt.Entry) Address {
 	return Address{
 		Code:            digits(e.Zip, 7),
 		JISCode:         digits(e.JIS, 5),
-		Prefecture:      name(e.Prefecture),
+		Prefecture:      prefectureName(e.Prefecture),
 		City:            name(e.City),
 		Town:            name(e.Town),
 		Note:            Annotation{Kanji: e.Note, Kana: e.NoteKana},

@@ -58,16 +58,11 @@ func build(ken []kenRow, rome []romeRow, kenDate, romeDate time.Time) (*binfmt.D
 		if seenPref[code] {
 			continue
 		}
-		romaji, err := prefectureRomaji(row.Pref)
-		if err != nil {
-			return nil, st, err
-		}
 		published, ok := ix.prefecture(row.Pref)
 		if !ok {
 			return nil, st, fmt.Errorf("no published romaji for prefecture %q", row.Pref)
 		}
-		d.Prefectures[code] = binfmt.Name{Kanji: row.Pref, Kana: row.PrefKana, Romaji: romaji}
-		d.PrefectureSourceRomaji[code] = published
+		d.Prefectures[code] = binfmt.Name{Kanji: row.Pref, Kana: row.PrefKana, Romaji: published}
 		seenPref[code] = true
 	}
 	for i, ok := range seenPref {

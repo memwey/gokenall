@@ -186,8 +186,8 @@ func verify(path string, d *binfmt.Dataset) error {
 	}
 	for i, pref := range d.Prefectures {
 		got, ok := store.PublishedPrefectureRomaji(pref.Kanji)
-		if !ok || got != d.PrefectureSourceRomaji[i] {
-			return fmt.Errorf("verify %s: prefecture %q source romaji is %q, %v; encoded %q", path, pref.Kanji, got, ok, d.PrefectureSourceRomaji[i])
+		if !ok || got != pref.Romaji {
+			return fmt.Errorf("verify %s: prefecture %d %q source romaji is %q, %v; encoded %q", path, i, pref.Kanji, got, ok, pref.Romaji)
 		}
 	}
 	for i := range d.Records {

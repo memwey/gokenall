@@ -23,9 +23,8 @@ type Store struct {
 	blob   string
 	strOff []uint32 // len(strOff) == numStrings+1
 
-	prefs      [PrefectureCount]nameRef
-	prefSource [PrefectureCount]uint32
-	cities     []cityRef
+	prefs  [PrefectureCount]nameRef
+	cities []cityRef
 
 	zips      []uint32 // sorted ascending; parallel to the rec* slices
 	recCity   []uint16
@@ -172,7 +171,6 @@ func unmarshal(payload []byte) (*Store, error) {
 
 	for i := range s.prefs {
 		s.prefs[i] = c.nameRef()
-		s.prefSource[i] = c.uvarint32()
 	}
 
 	numCities, err := c.count("cities")
@@ -247,7 +245,7 @@ func (s *Store) check() error {
 		}
 	}
 	for i, p := range s.prefs {
-		if p.kanji >= maxStr || p.kana >= maxStr || p.romaji >= maxStr || s.prefSource[i] >= maxStr {
+		if p.kanji >= maxStr || p.kana >= maxStr || p.romaji >= maxStr {
 			return fmt.Errorf("binfmt: prefecture %d references a string out of range", i)
 		}
 	}
@@ -278,9 +276,9 @@ func (s *Store) Prefectures() []Name {
 // PublishedPrefectureRomaji returns the exact prefecture spelling from
 // KEN_ALL_ROME.CSV for a kanji prefecture name.
 func (s *Store) PublishedPrefectureRomaji(kanji string) (string, bool) {
-	for i, p := range s.prefs {
+	for _, p := range s.prefs {
 		if s.str(p.kanji) == kanji {
-			return s.str(s.prefSource[i]), true
+			return s.str(p.romaji), true
 		}
 	}
 	return "", false

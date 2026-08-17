@@ -25,13 +25,11 @@ func sample() *Dataset {
 		},
 	}
 	for i := range d.Prefectures {
-		d.Prefectures[i] = Name{Kanji: "県", Kana: "ケン", Romaji: "Ken"}
-		d.PrefectureSourceRomaji[i] = "KEN"
+		d.Prefectures[i] = Name{Kanji: "県", Kana: "ケン", Romaji: "KEN"}
 	}
 	d.Prefectures[0] = Name{Kanji: "北海道", Kana: "ホッカイドウ", Romaji: "Hokkaido"}
-	d.Prefectures[12] = Name{Kanji: "東京都", Kana: "トウキョウト", Romaji: "Tokyo"}
-	d.PrefectureSourceRomaji[0] = "HOKKAIDO"
-	d.PrefectureSourceRomaji[12] = "TOKYO TO"
+	d.Prefectures[0].Romaji = "HOKKAIDO"
+	d.Prefectures[12] = Name{Kanji: "東京都", Kana: "トウキョウト", Romaji: "TOKYO TO"}
 	return d
 }
 
@@ -85,8 +83,8 @@ func TestRoundTrip(t *testing.T) {
 	if len(prefs) != PrefectureCount {
 		t.Fatalf("got %d prefectures, want %d", len(prefs), PrefectureCount)
 	}
-	if prefs[12].Romaji != "Tokyo" {
-		t.Errorf("prefecture 12 = %v, want Tokyo", prefs[12])
+	if prefs[12].Romaji != "TOKYO TO" {
+		t.Errorf("prefecture 12 = %v, want TOKYO TO", prefs[12])
 	}
 	if got, ok := s.PublishedPrefectureRomaji("東京都"); !ok || got != "TOKYO TO" {
 		t.Errorf("published prefecture romaji = %q, %v; want TOKYO TO", got, ok)
@@ -241,7 +239,7 @@ func TestDecodeRejectsCountsLargerThanThePayload(t *testing.T) {
 			p = binary.AppendUvarint(p, 0)
 			p = binary.AppendUvarint(p, 0) // empty string prefix
 			p = binary.AppendUvarint(p, 0) // empty string suffix
-			for range PrefectureCount * 4 {
+			for range PrefectureCount * 3 {
 				p = binary.AppendUvarint(p, 0)
 			}
 			p = binary.AppendUvarint(p, 1<<26)
@@ -349,7 +347,7 @@ func TestDecodeRejectsOversizedValues(t *testing.T) {
 		p = binary.AppendUvarint(p, 0) // its prefix
 		p = binary.AppendUvarint(p, 0) // its suffix
 		for range PrefectureCount {
-			for range 4 {
+			for range 3 {
 				p = binary.AppendUvarint(p, 0)
 			}
 		}

@@ -36,39 +36,6 @@ func TestPrettyTown(t *testing.T) {
 	}
 }
 
-func TestPrefectureEnglishIsCompleteAndDistinct(t *testing.T) {
-	if len(prefectureEnglish) != 47 {
-		t.Fatalf("%d prefecture names, want 47", len(prefectureEnglish))
-	}
-	seen := make(map[string]string, 47)
-	for kanji, english := range prefectureEnglish {
-		if other, dup := seen[english]; dup {
-			t.Errorf("%q and %q both map to %q", kanji, other, english)
-		}
-		seen[english] = kanji
-	}
-	for _, tt := range []struct{ kanji, want string }{
-		{"北海道", "Hokkaido"},
-		{"東京都", "Tokyo"},
-		{"大阪府", "Osaka"},
-		// Japan Post's own romaji file still writes the pre-war "GUMMA".
-		{"群馬県", "Gunma"},
-		{"沖縄県", "Okinawa"},
-	} {
-		got, err := prefectureRomaji(tt.kanji)
-		if err != nil {
-			t.Errorf("prefectureRomaji(%q): %v", tt.kanji, err)
-			continue
-		}
-		if got != tt.want {
-			t.Errorf("prefectureRomaji(%q) = %q, want %q", tt.kanji, got, tt.want)
-		}
-	}
-	if _, err := prefectureRomaji("架空県"); err == nil {
-		t.Error("prefectureRomaji accepted a prefecture that does not exist")
-	}
-}
-
 func TestRomajiIndexSkipsTruncatedRecords(t *testing.T) {
 	rows := []romeRow{
 		{Zip: "1000001", Pref: "東京都", City: "千代田区", Town: "千代田",
