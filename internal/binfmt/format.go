@@ -24,10 +24,29 @@ const Version = 5
 // HeaderSize is the number of uncompressed bytes preceding the flate stream.
 const HeaderSize = len(Magic) + 1
 
-// stringRestartInterval bounds how many preceding strings a future decoder
-// that keeps the front-coded table compact would have to walk. The current
-// decoder expands the table once at load time, but keeping restart points in
-// the format preserves that option without giving up much compression.
+// stringRestartInterval is how often a front-coded string is written in full
+// rather than as a prefix of the one before it.
+//
+// The decoder expands the table at load, so it only ever reads these in order
+// and does not need the restart points. They are here for the decoder that
+// would keep the table front coded in memory and rebuild a string on demand by
+// replaying from its nearest restart. That decoder was prototyped against the
+// real database (251,159 strings) rather than left to the imagination, and the
+// trade it offers is:
+//
+//	string table in memory   4.78 MiB expanded -> 2.06 MiB front coded
+//	reading one string       2.4 ns, no allocation -> 385 ns and two
+//	load                     about 11 ms shorter
+//
+// A shorter interval buys the speed back only part way: at 4 the table is
+// 2.82 MiB and a read is 77 ns, still allocating, because every read has to
+// materialise a string that slicing the blob gives away for free. An address
+// resolves eleven strings, or five once cities and prefectures are cached, so
+// even the best case turns a 90 ns lookup into several hundred.
+//
+// That is the wrong trade for a package whose point is fast offline lookup, so
+// the option stays unexercised. Keeping the restart points open costs 20 KiB of
+// the 1.67 MiB file, which is cheap enough to leave the door on its hinges.
 const stringRestartInterval = 64
 
 // The widths the codes are rendered at. A value beyond these would be printed
