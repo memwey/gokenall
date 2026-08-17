@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"time"
 )
@@ -13,6 +14,9 @@ import (
 // maxPayload bounds the inflated payload. The real one is a few megabytes;
 // this only exists so a corrupt or hostile file cannot exhaust memory.
 const maxPayload = 1 << 28
+
+// maxZip is the largest seven digit code.
+const maxZip = 9999999
 
 // Store is a decoded database. Strings are slices of one shared blob, so
 // reading a record costs no allocation.
@@ -99,14 +103,24 @@ func unmarshal(payload []byte) (*Store, error) {
 	}
 	s.blob = string(c.bytes(blobLen))
 	s.strOff = make([]uint32, numStrings+1)
-	var off uint32
+	// Accumulating in uint64 and bounding against the blob on every step is
+	// what makes str safe to slice without checking. Narrowing to uint32 here
+	// would let a crafted length wrap the running offset back into range,
+	// leaving the table non-monotonic and pointing outside the blob.
+	var off uint64
 	for i := range numStrings {
-		s.strOff[i] = off
-		off += uint32(c.uvarint())
+		s.strOff[i] = uint32(off)
+		off += uint64(c.uvarint32())
+		if off > uint64(blobLen) {
+			return nil, fmt.Errorf("binfmt: string %d runs %d bytes past the end of the %d byte blob", i, off-uint64(blobLen), blobLen)
+		}
 	}
-	s.strOff[numStrings] = off
-	if c.err == nil && off != uint32(blobLen) {
-		return nil, fmt.Errorf("binfmt: string lengths sum to %d but blob is %d bytes", off, blobLen)
+	s.strOff[numStrings] = uint32(off)
+	if c.err != nil {
+		return nil, c.err
+	}
+	if off != uint64(blobLen) {
+		return nil, fmt.Errorf("binfmt: string lengths sum to %d but the blob is %d bytes", off, blobLen)
 	}
 
 	for i := range s.prefs {
@@ -119,7 +133,7 @@ func unmarshal(payload []byte) (*Store, error) {
 	}
 	s.cities = make([]cityRef, numCities)
 	for i := range s.cities {
-		s.cities[i].jis = uint32(c.uvarint())
+		s.cities[i].jis = c.uvarint32()
 		s.cities[i].pref = c.byte()
 		s.cities[i].nameRef = c.nameRef()
 	}
@@ -129,14 +143,17 @@ func unmarshal(payload []byte) (*Store, error) {
 		return nil, err
 	}
 	s.zips = make([]uint32, n)
-	var prev uint32
+	var zip uint64
 	for i := range s.zips {
-		prev += uint32(c.uvarint())
-		s.zips[i] = prev
+		zip += uint64(c.uvarint32())
+		if zip > maxZip {
+			return nil, fmt.Errorf("binfmt: record %d has zip code %d, which is not seven digits", i, zip)
+		}
+		s.zips[i] = uint32(zip)
 	}
 	s.recCity = make([]uint16, n)
 	for i := range s.recCity {
-		s.recCity[i] = uint16(c.uvarint())
+		s.recCity[i] = uint16(c.bounded(math.MaxUint16, "city index"))
 	}
 	s.recKanji = c.uint32s(n)
 	s.recKana = c.uint32s(n)
@@ -315,18 +332,32 @@ func (c *cursor) count(what string) (int, error) {
 	return int(v), nil
 }
 
+// bounded reads a uvarint that has to fit somewhere narrower than 64 bits.
+// Truncating instead would turn an out-of-range value into an in-range one and
+// slip past the checks downstream.
+func (c *cursor) bounded(max uint64, what string) uint64 {
+	v := c.uvarint()
+	if c.err == nil && v > max {
+		c.fail("%s is %d, which does not fit in the field", what, v)
+		return 0
+	}
+	return v
+}
+
+func (c *cursor) uvarint32() uint32 { return uint32(c.bounded(math.MaxUint32, "value")) }
+
 func (c *cursor) uint32s(n int) []uint32 {
 	out := make([]uint32, n)
 	for i := range out {
-		out[i] = uint32(c.uvarint())
+		out[i] = c.uvarint32()
 	}
 	return out
 }
 
 func (c *cursor) nameRef() nameRef {
 	return nameRef{
-		kanji:  uint32(c.uvarint()),
-		kana:   uint32(c.uvarint()),
-		romaji: uint32(c.uvarint()),
+		kanji:  c.uvarint32(),
+		kana:   c.uvarint32(),
+		romaji: c.uvarint32(),
 	}
 }

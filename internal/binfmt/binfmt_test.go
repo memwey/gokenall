@@ -2,6 +2,7 @@ package binfmt
 
 import (
 	"bytes"
+	"encoding/binary"
 	"strings"
 	"testing"
 	"time"
@@ -183,6 +184,93 @@ func TestDecodeRejectsBadFiles(t *testing.T) {
 			}
 			if tt.want != "" && !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("error = %v, want it to mention %q", err, tt.want)
+			}
+		})
+	}
+}
+
+// A string length that does not fit in a uint32 used to be truncated on the
+// way in. Two of them could be chosen so the running offset wrapped around and
+// still landed on blobLen, which was the only thing checked — leaving strOff
+// non-monotonic and pointing outside the blob, so Decode succeeded and the
+// first access panicked instead.
+func TestDecodeRejectsOverflowingStringLengths(t *testing.T) {
+	var p []byte
+	p = binary.AppendVarint(p, 0) // ken_all date
+	p = binary.AppendVarint(p, 0) // rome date
+	p = binary.AppendUvarint(p, 2)
+	p = binary.AppendUvarint(p, 5)
+	p = append(p, "abcde"...)
+	// 4294967295 + 6 wraps to 5, which is exactly blobLen.
+	p = binary.AppendUvarint(p, 4294967295)
+	p = binary.AppendUvarint(p, 6)
+	for range PrefectureCount {
+		// Prefecture 0 points at the string whose offset wrapped.
+		p = binary.AppendUvarint(p, 1)
+		p = binary.AppendUvarint(p, 0)
+		p = binary.AppendUvarint(p, 0)
+	}
+	p = binary.AppendUvarint(p, 0) // no cities
+	p = binary.AppendUvarint(p, 0) // no records
+
+	s, err := unmarshal(p)
+	if err == nil {
+		// Before the fix this reached Prefectures and panicked there.
+		t.Fatalf("Decode accepted a payload whose string offsets wrap; Prefectures gives %v", s.Prefectures())
+	}
+	if !strings.Contains(err.Error(), "string") {
+		t.Errorf("error = %v, want it to blame the string table", err)
+	}
+}
+
+// Every length prefix is read as a uvarint and then narrowed. Values that do
+// not fit must be rejected rather than silently wrapping into something that
+// passes the later checks.
+func TestDecodeRejectsOversizedValues(t *testing.T) {
+	build := func(mutate func(*[]byte)) []byte {
+		var p []byte
+		p = binary.AppendVarint(p, 0)
+		p = binary.AppendVarint(p, 0)
+		p = binary.AppendUvarint(p, 1) // one string, the empty one
+		p = binary.AppendUvarint(p, 0) // empty blob
+		p = binary.AppendUvarint(p, 0) // its length
+		for range PrefectureCount {
+			p = binary.AppendUvarint(p, 0)
+			p = binary.AppendUvarint(p, 0)
+			p = binary.AppendUvarint(p, 0)
+		}
+		mutate(&p)
+		return p
+	}
+	tests := map[string]func(*[]byte){
+		"city JIS code": func(p *[]byte) {
+			*p = binary.AppendUvarint(*p, 1)     // one city
+			*p = binary.AppendUvarint(*p, 1<<32) // JIS code too large
+			*p = append(*p, 0)                   // prefecture
+			for range 3 {
+				*p = binary.AppendUvarint(*p, 0)
+			}
+			*p = binary.AppendUvarint(*p, 0) // no records
+		},
+		"zip code": func(p *[]byte) {
+			*p = binary.AppendUvarint(*p, 1) // one city
+			*p = binary.AppendUvarint(*p, 0)
+			*p = append(*p, 0)
+			for range 3 {
+				*p = binary.AppendUvarint(*p, 0)
+			}
+			*p = binary.AppendUvarint(*p, 1)     // one record
+			*p = binary.AppendUvarint(*p, 1<<33) // zip delta too large
+			for range 6 {
+				*p = binary.AppendUvarint(*p, 0)
+			}
+			*p = append(*p, 0)
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := unmarshal(build(mutate)); err == nil {
+				t.Error("unmarshal accepted a value too large for the field it lands in")
 			}
 		})
 	}

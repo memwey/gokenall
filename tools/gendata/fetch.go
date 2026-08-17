@@ -111,7 +111,11 @@ func (f *fetcher) resolve(ctx context.Context, src source) (zipURL string, updat
 		logf("  ! no revision date found on %s", finalURL)
 	}
 
-	f.toCache(src.zipName+".resolved", []byte(formatResolved(zipURL, updated)))
+	// A resolution without a date is incomplete; caching it would make one
+	// unlucky page load stick until somebody cleared the cache by hand.
+	if !updated.IsZero() {
+		f.toCache(src.zipName+".resolved", []byte(formatResolved(zipURL, updated)))
+	}
 	return zipURL, updated, nil
 }
 
