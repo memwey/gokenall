@@ -154,16 +154,17 @@ Measured on an Apple M1, 124,513 records:
 | | |
 |---|---|
 | embedded database | 1.67 MiB |
-| added to a stripped binary | 2.3 MiB |
-| `Lookup` | 96 ns, 2 allocations |
-| `Transliterate` | 313 ns, 4 allocations |
-| first lookup, or `Load()` | 54 ms cold, 31 ms warm |
+| added to a binary | 1.9 MiB |
+| `Lookup` | 90 ns, 2 allocations |
+| `Transliterate` | 300 ns, 4 allocations |
+| first lookup, or `Load()` | 44 ms |
 | resident afterwards | 7.2 MiB |
 
 The database is a front-coded, columnar payload inside one DEFLATE stream,
 decoded on first use. String IDs are delta encoded and the mostly-empty note
 columns are sparse. Every name is a slice of one shared string after loading,
-so reading a record allocates nothing beyond the two formatted codes.
+so reading a record allocates nothing beyond the two formatted codes — the 47
+prefecture display names are derived once at load rather than per address.
 
 ## Updating the database
 

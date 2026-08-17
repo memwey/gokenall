@@ -68,6 +68,35 @@ func TestPublishedPrefectureRomaji(t *testing.T) {
 	}
 }
 
+// The conventional English names used to be a hand-written table of 47, which
+// was exhaustively right by construction. They are derived from Japan Post's
+// spelling now, so the exhaustive check has to be a test instead: a rule that
+// works on Tokyo and Gunma can still be wrong on the other forty-five.
+func TestEveryPrefectureDerivesTheConventionalEnglishName(t *testing.T) {
+	want := [...]string{
+		"Hokkaido", "Aomori", "Iwate", "Miyagi", "Akita", "Yamagata", "Fukushima",
+		"Ibaraki", "Tochigi", "Gunma", "Saitama", "Chiba", "Tokyo", "Kanagawa",
+		"Niigata", "Toyama", "Ishikawa", "Fukui", "Yamanashi", "Nagano", "Gifu",
+		"Shizuoka", "Aichi", "Mie", "Shiga", "Kyoto", "Osaka", "Hyogo", "Nara",
+		"Wakayama", "Tottori", "Shimane", "Okayama", "Hiroshima", "Yamaguchi",
+		"Tokushima", "Kagawa", "Ehime", "Kochi", "Fukuoka", "Saga", "Nagasaki",
+		"Kumamoto", "Oita", "Miyazaki", "Kagoshima", "Okinawa",
+	}
+	got := utfkenall.Prefectures()
+	if len(got) != len(want) {
+		t.Fatalf("got %d prefectures, want %d", len(got), len(want))
+	}
+	for i, p := range got {
+		if p.Romaji != want[i] {
+			published, _ := utfkenall.PublishedPrefectureRomaji(p.Kanji)
+			t.Errorf("%s (published %q) derived %q, want %q", p.Kanji, published, p.Romaji, want[i])
+		}
+		if p.Kanji == "" || p.Kana == "" {
+			t.Errorf("prefecture %d is incomplete: %#v", i, p)
+		}
+	}
+}
+
 func TestRawTown(t *testing.T) {
 	tests := []struct {
 		code       string

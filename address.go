@@ -98,7 +98,7 @@ func (a Address) PublishedPrefectureRomaji() string {
 }
 
 // prefectureName derives the display spelling from the source value stored in
-// the database. Japan Post appends the administrative unit and still spells
+// the database. It runs 47 times per process, at load; see [database]. Japan Post appends the administrative unit and still spells
 // Gunma as GUMMA; English addresses conventionally use neither.
 func prefectureName(n binfmt.Name) Name {
 	out := name(n)
@@ -149,11 +149,11 @@ func (a Address) RawTown() (kanji, kana string) {
 	return kanji, kana
 }
 
-func newAddress(e binfmt.Entry) Address {
+func (db *database) address(e binfmt.Entry) Address {
 	return Address{
 		Code:            digits(e.Zip, 7),
 		JISCode:         digits(e.JIS, 5),
-		Prefecture:      prefectureName(e.Prefecture),
+		Prefecture:      db.prefectures[e.PrefIndex],
 		City:            name(e.City),
 		Town:            name(e.Town),
 		Note:            Annotation{Kanji: e.Note, Kana: e.NoteKana},

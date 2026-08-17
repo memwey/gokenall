@@ -75,7 +75,10 @@ type Entry struct {
 	NoteKana   string
 	Zip        uint32
 	JIS        uint32
-	Flags      uint8
+	// PrefIndex is Prefecture's position in [Store.Prefectures], for callers
+	// that keep their own table derived from it.
+	PrefIndex uint8
+	Flags     uint8
 }
 
 // Decode reads a database written by [Encode].
@@ -295,11 +298,12 @@ func (s *Store) At(i int) Entry {
 			Kana:   s.str(s.recKana[i]),
 			Romaji: s.str(s.recRomaji[i]),
 		},
-		Note:     s.str(s.recNote.id(i)),
-		NoteKana: s.str(s.recNoteKn.id(i)),
-		Zip:      s.zips[i],
-		JIS:      city.jis,
-		Flags:    s.recFlags[i],
+		PrefIndex: city.pref,
+		Note:      s.str(s.recNote.id(i)),
+		NoteKana:  s.str(s.recNoteKn.id(i)),
+		Zip:       s.zips[i],
+		JIS:       city.jis,
+		Flags:     s.recFlags[i],
 	}
 }
 

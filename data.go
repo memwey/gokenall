@@ -13,8 +13,26 @@ import (
 //go:embed data/kenall.bin
 var packed []byte
 
-var decode = sync.OnceValues(func() (*binfmt.Store, error) {
-	return binfmt.Decode(bytes.NewReader(packed))
+// database is the decoded store plus everything derived from it that would
+// otherwise be recomputed on every address.
+type database struct {
+	store *binfmt.Store
+	// prefectures holds the display spelling of all 47, derived once from the
+	// published one. There are only 47 of them and every address carries one,
+	// so deriving per address costs more than the rest of a lookup together.
+	prefectures [binfmt.PrefectureCount]Name
+}
+
+var decode = sync.OnceValues(func() (*database, error) {
+	store, err := binfmt.Decode(bytes.NewReader(packed))
+	if err != nil {
+		return nil, err
+	}
+	db := &database{store: store}
+	for i, published := range store.Prefectures() {
+		db.prefectures[i] = prefectureName(published)
+	}
+	return db, nil
 })
 
 // Load decodes the embedded database and reports whether it is usable.
@@ -30,10 +48,10 @@ func Load() error {
 // mustLoad is for the accessors that have no error to return. A failure here
 // means the embedded blob does not match the format this build expects, which
 // is a broken binary rather than anything a caller can recover from.
-func mustLoad() *binfmt.Store {
-	s, err := decode()
+func mustLoad() *database {
+	db, err := decode()
 	if err != nil {
 		panic("utfkenall: embedded database is unreadable: " + err.Error())
 	}
-	return s
+	return db
 }
