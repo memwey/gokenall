@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/bits"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -29,8 +31,8 @@ type Store struct {
 	recKanji  []uint32
 	recKana   []uint32
 	recRomaji []uint32
-	recNote   []uint32
-	recNoteKn []uint32
+	recNote   sparseStringColumn
+	recNoteKn sparseStringColumn
 	recFlags  []uint8
 
 	kenAllUpdated time.Time
@@ -43,6 +45,25 @@ type cityRef struct {
 	nameRef
 	jis  uint32
 	pref uint8
+}
+
+// sparseStringColumn stores one presence bit per record and IDs only for the
+// records that have a value. rank[word] is the number of set bits before that
+// word, so looking up a present value remains O(1).
+type sparseStringColumn struct {
+	present []uint64
+	rank    []uint32
+	ids     []uint32
+}
+
+func (s sparseStringColumn) id(i int) uint32 {
+	word, bit := i>>6, uint(i&63)
+	v := s.present[word]
+	if v&(uint64(1)<<bit) == 0 {
+		return 0
+	}
+	before := v & ((uint64(1) << bit) - 1)
+	return s.ids[int(s.rank[word])+bits.OnesCount64(before)]
 }
 
 // Entry is a record with every string resolved.
@@ -94,11 +115,13 @@ func unmarshal(payload []byte) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	blobLen, err := c.count("blob bytes")
-	if err != nil {
-		return nil, err
+	if numStrings == 0 {
+		return nil, errors.New("binfmt: string table has no empty string")
 	}
-	s.blob = string(c.bytes(blobLen))
+	// This is the expanded size, so front coding can legitimately make it
+	// larger than the bytes left in the payload. Bound it independently before
+	// using it as an allocation size.
+	blobLen := int(c.bounded(maxPayload, "blob bytes"))
 	if c.err != nil {
 		return nil, c.err
 	}
@@ -109,24 +132,41 @@ func unmarshal(payload []byte) (*Store, error) {
 		return nil, fmt.Errorf("binfmt: %d strings cannot fit in a %d byte blob", numStrings, blobLen)
 	}
 	s.strOff = make([]uint32, numStrings+1)
-	// Accumulating in uint64 and bounding against the blob on every step is
-	// what makes str safe to slice without checking. Narrowing to uint32 here
-	// would let a crafted length wrap the running offset back into range,
-	// leaving the table non-monotonic and pointing outside the blob.
-	var off uint64
+	var blob strings.Builder
+	blob.Grow(blobLen)
 	for i := range numStrings {
-		s.strOff[i] = uint32(off)
-		off += uint64(c.uvarint32())
-		if off > uint64(blobLen) {
-			return nil, fmt.Errorf("binfmt: string %d runs %d bytes past the end of the %d byte blob", i, off-uint64(blobLen), blobLen)
+		s.strOff[i] = uint32(blob.Len())
+		prefix := int(c.bounded(uint64(blobLen), "string prefix"))
+		if i%stringRestartInterval == 0 && prefix != 0 {
+			return nil, fmt.Errorf("binfmt: restart string %d has a %d byte prefix", i, prefix)
 		}
+		previous := ""
+		if i > 0 {
+			previous = blob.String()[s.strOff[i-1]:s.strOff[i]]
+		}
+		if prefix > len(previous) {
+			return nil, fmt.Errorf("binfmt: string %d keeps a %d byte prefix from a %d byte predecessor", i, prefix, len(previous))
+		}
+		suffixLen, err := c.count("string suffix bytes")
+		if err != nil {
+			return nil, err
+		}
+		if blob.Len()+prefix+suffixLen > blobLen {
+			return nil, fmt.Errorf("binfmt: string %d runs past the end of the %d byte blob", i, blobLen)
+		}
+		blob.WriteString(previous[:prefix])
+		blob.Write(c.bytes(suffixLen))
 	}
-	s.strOff[numStrings] = uint32(off)
+	s.strOff[numStrings] = uint32(blob.Len())
 	if c.err != nil {
 		return nil, c.err
 	}
-	if off != uint64(blobLen) {
-		return nil, fmt.Errorf("binfmt: string lengths sum to %d but the blob is %d bytes", off, blobLen)
+	if blob.Len() != blobLen {
+		return nil, fmt.Errorf("binfmt: strings expand to %d bytes but the blob is %d bytes", blob.Len(), blobLen)
+	}
+	s.blob = blob.String()
+	if s.str(0) != "" {
+		return nil, errors.New("binfmt: string zero is not empty")
 	}
 
 	for i := range s.prefs {
@@ -160,15 +200,13 @@ func unmarshal(payload []byte) (*Store, error) {
 		}
 		s.zips[i] = uint32(zip)
 	}
-	s.recCity = make([]uint16, n)
-	for i := range s.recCity {
-		s.recCity[i] = uint16(c.bounded(math.MaxUint16, "city index"))
-	}
-	s.recKanji = c.uint32s(n)
-	s.recKana = c.uint32s(n)
-	s.recRomaji = c.uint32s(n)
-	s.recNote = c.uint32s(n)
-	s.recNoteKn = c.uint32s(n)
+	s.recCity = deltaColumn[uint16](c, n, math.MaxUint16, "city index")
+	maxStringID := uint32(numStrings - 1)
+	s.recKanji = deltaColumn[uint32](c, n, maxStringID, "town kanji string")
+	s.recKana = deltaColumn[uint32](c, n, maxStringID, "town kana string")
+	s.recRomaji = deltaColumn[uint32](c, n, maxStringID, "town romaji string")
+	s.recNote = c.sparseStrings(n, maxStringID, "note")
+	s.recNoteKn = c.sparseStrings(n, maxStringID, "note kana")
 	s.recFlags = make([]uint8, n)
 	for i := range s.recFlags {
 		s.recFlags[i] = c.byte()
@@ -180,6 +218,9 @@ func unmarshal(payload []byte) (*Store, error) {
 	if err := s.check(); err != nil {
 		return nil, err
 	}
+	if c.pos != len(c.buf) {
+		return nil, fmt.Errorf("binfmt: %d trailing payload bytes", len(c.buf)-c.pos)
+	}
 	return s, nil
 }
 
@@ -188,7 +229,7 @@ func unmarshal(payload []byte) (*Store, error) {
 func (s *Store) check() error {
 	maxStr := uint32(len(s.strOff) - 1)
 	for i, id := range s.recKanji {
-		if id >= maxStr || s.recKana[i] >= maxStr || s.recRomaji[i] >= maxStr || s.recNote[i] >= maxStr || s.recNoteKn[i] >= maxStr {
+		if id >= maxStr || s.recKana[i] >= maxStr || s.recRomaji[i] >= maxStr {
 			return fmt.Errorf("binfmt: record %d references a string out of range", i)
 		}
 		if int(s.recCity[i]) >= len(s.cities) {
@@ -243,8 +284,8 @@ func (s *Store) At(i int) Entry {
 			Kana:   s.str(s.recKana[i]),
 			Romaji: s.str(s.recRomaji[i]),
 		},
-		Note:     s.str(s.recNote[i]),
-		NoteKana: s.str(s.recNoteKn[i]),
+		Note:     s.str(s.recNote.id(i)),
+		NoteKana: s.str(s.recNoteKn.id(i)),
 		Zip:      s.zips[i],
 		JIS:      city.jis,
 		Flags:    s.recFlags[i],
@@ -357,10 +398,68 @@ func (c *cursor) bounded(max uint64, what string) uint64 {
 
 func (c *cursor) uvarint32() uint32 { return uint32(c.bounded(math.MaxUint32, "value")) }
 
-func (c *cursor) uint32s(n int) []uint32 {
-	out := make([]uint32, n)
+// deltaColumn expands one signed-delta column while checking both sides of
+// the target integer range before addition. A malformed negative delta must
+// not wrap around to a plausible positive string or city index.
+func deltaColumn[T ~uint16 | ~uint32](c *cursor, n int, max uint32, what string) []T {
+	out := make([]T, n)
+	var previous int64
 	for i := range out {
-		out[i] = c.uvarint32()
+		delta := c.varint()
+		if c.err != nil {
+			return out
+		}
+		if delta < -previous || delta > int64(max)-previous {
+			c.fail("%s delta at record %d leaves the field range", what, i)
+			return out
+		}
+		previous += delta
+		out[i] = T(previous)
+	}
+	return out
+}
+
+func (c *cursor) sparseStrings(records int, maxID uint32, what string) sparseStringColumn {
+	count, err := c.count(what + " values")
+	if err != nil {
+		return sparseStringColumn{}
+	}
+	if count > records {
+		c.fail("%s has %d values for %d records", what, count, records)
+		return sparseStringColumn{}
+	}
+	out := sparseStringColumn{
+		present: make([]uint64, (records+63)/64),
+		rank:    make([]uint32, (records+63)/64),
+		ids:     make([]uint32, count),
+	}
+	previous := -1
+	for j := range count {
+		gap := c.bounded(uint64(records), what+" record gap")
+		i := previous + 1 + int(gap)
+		if c.err != nil {
+			return out
+		}
+		if i >= records {
+			c.fail("%s value %d points at record %d of %d", what, j, i, records)
+			return out
+		}
+		id := c.uvarint32()
+		if c.err != nil {
+			return out
+		}
+		if id == 0 || id > maxID {
+			c.fail("%s value %d references string %d of %d", what, j, id, maxID+1)
+			return out
+		}
+		out.present[i>>6] |= uint64(1) << uint(i&63)
+		out.ids[j] = id
+		previous = i
+	}
+	var rank uint32
+	for i, word := range out.present {
+		out.rank[i] = rank
+		rank += uint32(bits.OnesCount64(word))
 	}
 	return out
 }

@@ -3,6 +3,7 @@ package binfmt
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -132,6 +133,48 @@ func TestStringsAreInterned(t *testing.T) {
 	}
 }
 
+func TestFrontCodedStringsCrossRestartBoundaries(t *testing.T) {
+	d := sample()
+	d.Records = d.Records[:0]
+	for i := range stringRestartInterval*2 + 3 {
+		d.Records = append(d.Records, Record{
+			Zip:  uint32(2000000 + i),
+			City: 0,
+			Town: Name{
+				Kanji:  fmt.Sprintf("共通する長い接頭辞%03d", i),
+				Kana:   fmt.Sprintf("キョウツウスルナガイセットウジ%03d", i),
+				Romaji: fmt.Sprintf("Long-common-prefix-%03d", i),
+			},
+		})
+	}
+	s := encodeSample(t, d)
+	for i, want := range d.Records {
+		if got := s.At(i); got.Town != want.Town {
+			t.Fatalf("record %d crossed a restart as %v, want %v", i, got.Town, want.Town)
+		}
+	}
+}
+
+func TestNotesUseSparseColumns(t *testing.T) {
+	d := sample()
+	for i := range 500 {
+		d.Records = append(d.Records, Record{Zip: uint32(2000000 + i), City: 0})
+	}
+	s := encodeSample(t, d)
+	if got := len(s.recNote.ids); got != 1 {
+		t.Fatalf("note column retained %d IDs, want only the one non-empty note", got)
+	}
+	if got := len(s.recNoteKn.ids); got != 1 {
+		t.Fatalf("note-kana column retained %d IDs, want only the one non-empty note", got)
+	}
+	if got := s.At(0); got.Note == "" || got.NoteKana == "" {
+		t.Fatalf("sparse note was lost: %+v", got)
+	}
+	if got := s.At(len(d.Records) - 1); got.Note != "" || got.NoteKana != "" {
+		t.Fatalf("empty sparse note decoded as %+v", got)
+	}
+}
+
 func TestEncodeRejectsUnsortedRecords(t *testing.T) {
 	d := sample()
 	d.Records[0], d.Records[1] = d.Records[1], d.Records[0]
@@ -190,7 +233,8 @@ func TestDecodeRejectsCountsLargerThanThePayload(t *testing.T) {
 			p = binary.AppendVarint(p, 0)
 			p = binary.AppendUvarint(p, 1)
 			p = binary.AppendUvarint(p, 0)
-			p = binary.AppendUvarint(p, 0)
+			p = binary.AppendUvarint(p, 0) // empty string prefix
+			p = binary.AppendUvarint(p, 0) // empty string suffix
 			for range PrefectureCount * 3 {
 				p = binary.AppendUvarint(p, 0)
 			}
@@ -255,37 +299,34 @@ func TestDecodeRejectsBadFiles(t *testing.T) {
 	}
 }
 
-// A string length that does not fit in a uint32 used to be truncated on the
-// way in. Two of them could be chosen so the running offset wrapped around and
-// still landed on blobLen, which was the only thing checked — leaving strOff
-// non-monotonic and pointing outside the blob, so Decode succeeded and the
-// first access panicked instead.
-func TestDecodeRejectsOverflowingStringLengths(t *testing.T) {
-	var p []byte
-	p = binary.AppendVarint(p, 0) // ken_all date
-	p = binary.AppendVarint(p, 0) // rome date
-	p = binary.AppendUvarint(p, 2)
-	p = binary.AppendUvarint(p, 5)
-	p = append(p, "abcde"...)
-	// 4294967295 + 6 wraps to 5, which is exactly blobLen.
-	p = binary.AppendUvarint(p, 4294967295)
-	p = binary.AppendUvarint(p, 6)
-	for range PrefectureCount {
-		// Prefecture 0 points at the string whose offset wrapped.
-		p = binary.AppendUvarint(p, 1)
-		p = binary.AppendUvarint(p, 0)
-		p = binary.AppendUvarint(p, 0)
+func TestDecodeRejectsInvalidFrontCoding(t *testing.T) {
+	header := func(strings, blob int) []byte {
+		var p []byte
+		p = binary.AppendVarint(p, 0)
+		p = binary.AppendVarint(p, 0)
+		p = binary.AppendUvarint(p, uint64(strings))
+		return binary.AppendUvarint(p, uint64(blob))
 	}
-	p = binary.AppendUvarint(p, 0) // no cities
-	p = binary.AppendUvarint(p, 0) // no records
-
-	s, err := unmarshal(p)
-	if err == nil {
-		// Before the fix this reached Prefectures and panicked there.
-		t.Fatalf("Decode accepted a payload whose string offsets wrap; Prefectures gives %v", s.Prefectures())
+	tests := map[string][]byte{
+		"restart with prefix": append(header(1, 1), 1),
+		"prefix longer than predecessor": func() []byte {
+			p := header(2, 1)
+			p = binary.AppendUvarint(p, 0) // empty string prefix
+			p = binary.AppendUvarint(p, 0) // empty string suffix
+			return binary.AppendUvarint(p, 1)
+		}(),
+		"suffix beyond blob": func() []byte {
+			p := header(1, 1)
+			p = binary.AppendUvarint(p, 0)
+			return binary.AppendUvarint(p, 2)
+		}(),
 	}
-	if !strings.Contains(err.Error(), "string") {
-		t.Errorf("error = %v, want it to blame the string table", err)
+	for name, p := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := unmarshal(p); err == nil || !strings.Contains(err.Error(), "string") {
+				t.Fatalf("unmarshal error = %v, want a string-table error", err)
+			}
+		})
 	}
 }
 
@@ -299,7 +340,8 @@ func TestDecodeRejectsOversizedValues(t *testing.T) {
 		p = binary.AppendVarint(p, 0)
 		p = binary.AppendUvarint(p, 1) // one string, the empty one
 		p = binary.AppendUvarint(p, 0) // empty blob
-		p = binary.AppendUvarint(p, 0) // its length
+		p = binary.AppendUvarint(p, 0) // its prefix
+		p = binary.AppendUvarint(p, 0) // its suffix
 		for range PrefectureCount {
 			p = binary.AppendUvarint(p, 0)
 			p = binary.AppendUvarint(p, 0)
@@ -342,6 +384,66 @@ func TestDecodeRejectsOversizedValues(t *testing.T) {
 	}
 }
 
+func TestDecodeRejectsInvalidDeltaColumns(t *testing.T) {
+	tests := map[string][]byte{
+		"below zero":    binary.AppendVarint(nil, -1),
+		"above maximum": binary.AppendVarint(nil, 11),
+		"later below zero": func() []byte {
+			p := binary.AppendVarint(nil, 5)
+			return binary.AppendVarint(p, -6)
+		}(),
+	}
+	for name, p := range tests {
+		t.Run(name, func(t *testing.T) {
+			c := &cursor{buf: p}
+			n := 1
+			if name == "later below zero" {
+				n = 2
+			}
+			_ = deltaColumn[uint32](c, n, 10, "test")
+			if c.err == nil {
+				t.Fatal("delta column accepted a value outside its field")
+			}
+		})
+	}
+}
+
+func TestDecodeRejectsInvalidSparseColumns(t *testing.T) {
+	tests := map[string][]byte{
+		"more values than records": func() []byte {
+			p := binary.AppendUvarint(nil, 2)
+			return append(p, 0, 1, 0, 1)
+		}(),
+		"record beyond end": func() []byte {
+			p := binary.AppendUvarint(nil, 1)
+			p = binary.AppendUvarint(p, 1)
+			return binary.AppendUvarint(p, 1)
+		}(),
+		"empty ID stored densely": func() []byte {
+			p := binary.AppendUvarint(nil, 1)
+			p = binary.AppendUvarint(p, 0)
+			return binary.AppendUvarint(p, 0)
+		}(),
+	}
+	for name, p := range tests {
+		t.Run(name, func(t *testing.T) {
+			c := &cursor{buf: p}
+			_ = c.sparseStrings(1, 10, "test")
+			if c.err == nil {
+				t.Fatal("sparse column accepted malformed input")
+			}
+		})
+	}
+}
+
+func TestDecodeRejectsTrailingPayload(t *testing.T) {
+	d := sample()
+	p := append(marshal(d, intern(d)), 0)
+	if _, err := unmarshal(p); err == nil || !strings.Contains(err.Error(), "trailing") {
+		t.Fatalf("unmarshal with trailing data = %v, want a trailing-data error", err)
+	}
+}
+
 // Indices are validated once at load time so the lookup path can slice the
 // blob without checking. Anything that slipped through would panic on the
 // first record that reached it.
@@ -357,8 +459,8 @@ func TestCheckRejectsOutOfRangeIndices(t *testing.T) {
 			recKanji:  []uint32{0},
 			recKana:   []uint32{0},
 			recRomaji: []uint32{0},
-			recNote:   []uint32{0},
-			recNoteKn: []uint32{0},
+			recNote:   sparseStringColumn{present: make([]uint64, 1), rank: make([]uint32, 1)},
+			recNoteKn: sparseStringColumn{present: make([]uint64, 1), rank: make([]uint32, 1)},
 			recFlags:  []uint8{0},
 		}
 	}
@@ -368,8 +470,6 @@ func TestCheckRejectsOutOfRangeIndices(t *testing.T) {
 
 	tests := map[string]func(*Store){
 		"record string":     func(s *Store) { s.recKanji[0] = 2 },
-		"record note":       func(s *Store) { s.recNote[0] = 99 },
-		"record note kana":  func(s *Store) { s.recNoteKn[0] = 99 },
 		"record city":       func(s *Store) { s.recCity[0] = 7 },
 		"city string":       func(s *Store) { s.cities[0].kana = 2 },
 		"city prefecture":   func(s *Store) { s.cities[0].pref = PrefectureCount },

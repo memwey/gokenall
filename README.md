@@ -150,15 +150,17 @@ Measured on an Apple M1, 124,513 records:
 
 | | |
 |---|---|
-| added to your binary | 2.2 MiB |
-| `Lookup` | 98 ns, 2 allocations |
+| embedded database | 1.67 MiB |
+| added to a stripped binary | 2.3 MiB |
+| `Lookup` | 96 ns, 2 allocations |
 | `Transliterate` | 436 ns, 4 allocations |
-| first lookup, or `Load()` | 59 ms |
-| resident afterwards | 8.0 MiB |
+| first lookup, or `Load()` | 54 ms cold, 31 ms warm |
+| resident afterwards | 7.2 MiB |
 
-The database is one DEFLATE stream decoded on first use. Every name is a slice
-of a single shared string, so reading a record allocates nothing beyond the two
-formatted codes.
+The database is a front-coded, columnar payload inside one DEFLATE stream,
+decoded on first use. String IDs are delta encoded and the mostly-empty note
+columns are sparse. Every name is a slice of one shared string after loading,
+so reading a record allocates nothing beyond the two formatted codes.
 
 ## Updating the database
 

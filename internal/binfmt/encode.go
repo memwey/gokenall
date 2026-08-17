@@ -143,11 +143,17 @@ func marshal(d *Dataset, tab *stringTable) []byte {
 
 	buf = binary.AppendUvarint(buf, uint64(len(tab.sorted)))
 	buf = binary.AppendUvarint(buf, uint64(tab.blobLen))
-	for _, s := range tab.sorted {
-		buf = append(buf, s...)
-	}
-	for _, s := range tab.sorted {
-		buf = binary.AppendUvarint(buf, uint64(len(s)))
+	var previous string
+	for i, s := range tab.sorted {
+		prefix := 0
+		if i%stringRestartInterval != 0 {
+			prefix = commonPrefixLen(previous, s)
+		}
+		suffix := s[prefix:]
+		buf = binary.AppendUvarint(buf, uint64(prefix))
+		buf = binary.AppendUvarint(buf, uint64(len(suffix)))
+		buf = append(buf, suffix...)
+		previous = s
 	}
 
 	for _, n := range d.Prefectures {
@@ -172,27 +178,65 @@ func marshal(d *Dataset, tab *stringTable) []byte {
 		buf = binary.AppendUvarint(buf, uint64(r.Zip-prev))
 		prev = r.Zip
 	}
-	for _, r := range d.Records {
-		buf = binary.AppendUvarint(buf, uint64(r.City))
-	}
-	for _, r := range d.Records {
-		buf = binary.AppendUvarint(buf, uint64(tab.id(r.Town.Kanji)))
-	}
-	for _, r := range d.Records {
-		buf = binary.AppendUvarint(buf, uint64(tab.id(r.Town.Kana)))
-	}
-	for _, r := range d.Records {
-		buf = binary.AppendUvarint(buf, uint64(tab.id(r.Town.Romaji)))
-	}
-	for _, r := range d.Records {
-		buf = binary.AppendUvarint(buf, uint64(tab.id(r.Note)))
-	}
-	for _, r := range d.Records {
-		buf = binary.AppendUvarint(buf, uint64(tab.id(r.NoteKana)))
-	}
+	buf = appendDeltaColumn(buf, d.Records, func(r Record) uint32 { return uint32(r.City) })
+	buf = appendDeltaColumn(buf, d.Records, func(r Record) uint32 { return tab.id(r.Town.Kanji) })
+	buf = appendDeltaColumn(buf, d.Records, func(r Record) uint32 { return tab.id(r.Town.Kana) })
+	buf = appendDeltaColumn(buf, d.Records, func(r Record) uint32 { return tab.id(r.Town.Romaji) })
+	buf = appendSparseColumn(buf, d.Records, func(r Record) uint32 { return tab.id(r.Note) })
+	buf = appendSparseColumn(buf, d.Records, func(r Record) uint32 { return tab.id(r.NoteKana) })
 	for _, r := range d.Records {
 		buf = append(buf, r.Flags)
 	}
 
+	return buf
+}
+
+func commonPrefixLen(a, b string) int {
+	n := min(len(a), len(b))
+	for i := range n {
+		if a[i] != b[i] {
+			return i
+		}
+	}
+	return n
+}
+
+// appendDeltaColumn writes signed differences between adjacent values. Records
+// are grouped geographically, so their city and town string IDs tend to stay
+// close; small differences take fewer bytes and leave longer repeated runs for
+// DEFLATE than writing the absolute IDs.
+func appendDeltaColumn(buf []byte, records []Record, value func(Record) uint32) []byte {
+	var previous int64
+	for _, r := range records {
+		v := int64(value(r))
+		buf = binary.AppendVarint(buf, v-previous)
+		previous = v
+	}
+	return buf
+}
+
+// appendSparseColumn writes only non-empty values. Notes occur on fewer than
+// one record in fifteen, so a dense column spends almost all of its bytes on
+// zeros even before it becomes a much larger []uint32 at load time. Gaps are
+// measured from the record after the previous value, making every gap
+// non-negative and keeping adjacent notes cheap.
+func appendSparseColumn(buf []byte, records []Record, value func(Record) uint32) []byte {
+	count := 0
+	for _, r := range records {
+		if value(r) != 0 {
+			count++
+		}
+	}
+	buf = binary.AppendUvarint(buf, uint64(count))
+	previous := -1
+	for i, r := range records {
+		id := value(r)
+		if id == 0 {
+			continue
+		}
+		buf = binary.AppendUvarint(buf, uint64(i-previous-1))
+		buf = binary.AppendUvarint(buf, uint64(id))
+		previous = i
+	}
 	return buf
 }

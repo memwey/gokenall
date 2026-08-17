@@ -7,10 +7,9 @@
 //
 // The payload is columnar: every field of the record table is written as its
 // own run of varints rather than interleaving whole records. Neighbouring
-// values in a column are near-identical, which is what DEFLATE is good at;
-// row-major layout would scatter them. Strings are interned and sorted, so the
-// blob groups shared prefixes together and each string is stored once no
-// matter how many zip codes reference it.
+// values in a column are near-identical, so string IDs are delta encoded before
+// DEFLATE sees them. Strings are interned and sorted, then front coded against
+// the previous string so their common prefixes are not stored repeatedly.
 package binfmt
 
 import "time"
@@ -20,10 +19,16 @@ const Magic = "UKEN"
 
 // Version is the format revision. Decode rejects anything else, so bumping it
 // forces a regenerated data file rather than a silent misparse.
-const Version = 2
+const Version = 3
 
 // HeaderSize is the number of uncompressed bytes preceding the flate stream.
 const HeaderSize = len(Magic) + 1
+
+// stringRestartInterval bounds how many preceding strings a future decoder
+// that keeps the front-coded table compact would have to walk. The current
+// decoder expands the table once at load time, but keeping restart points in
+// the format preserves that option without giving up much compression.
+const stringRestartInterval = 64
 
 // The widths the codes are rendered at. A value beyond these would be printed
 // modulo its width — 10000001 as "0000001" — so both sides of the format reject
