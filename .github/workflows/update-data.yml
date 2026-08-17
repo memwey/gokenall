@@ -1,9 +1,6 @@
 name: Update data
 
-# Japan Post publishes a new edition at the end of each month.
 on:
-  schedule:
-    - cron: '0 3 5 * *'
   workflow_dispatch:
 
 permissions:
@@ -44,5 +41,5 @@ jobs:
 
           gh pr create --base "${{ github.ref_name }}" --head "$branch" \
             --title "Update the embedded zip code database" \
-            --body "Regenerated from Japan Post by the scheduled \`update-data\` workflow." \
-            || gh pr edit "$branch" --body "Regenerated from Japan Post by the scheduled \`update-data\` workflow."
+            --body "Regenerated from Japan Post by the manually triggered \`update-data\` workflow." \
+            || gh pr edit "$branch" --body "Regenerated from Japan Post by the manually triggered \`update-data\` workflow."
