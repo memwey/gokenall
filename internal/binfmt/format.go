@@ -27,26 +27,30 @@ const HeaderSize = len(Magic) + 1
 // stringRestartInterval is how often a front-coded string is written in full
 // rather than as a prefix of the one before it.
 //
-// The decoder expands the table at load, so it only ever reads these in order
-// and does not need the restart points. They are here for the decoder that
-// would keep the table front coded in memory and rebuild a string on demand by
-// replaying from its nearest restart. That decoder was prototyped against the
-// real database (251,159 strings) rather than left to the imagination, and the
-// trade it offers is:
+// The decoder expands the table at load, reads these in order, and so never
+// needs the restart points. They are here for the decoder that would keep the
+// table front coded in memory and rebuild a string on demand by replaying from
+// its nearest restart. That decoder was built and measured against the real
+// database — 124,513 records, agreeing with this one on every field — rather
+// than left to the imagination. Reading one record, with cities and prefectures
+// kept expanded because every record carries both:
 //
-//	string table in memory   4.78 MiB expanded -> 2.06 MiB front coded
-//	reading one string       2.4 ns, no allocation -> 385 ns and two
-//	load                     about 11 ms shorter
+//	         eager   23 ns,   no allocation
+//	interval 4      337 ns,  6 allocations, string table 1.76 MiB smaller
+//	interval 8      413 ns,  7 allocations,                2.17 MiB
+//	interval 16     523 ns,  7 allocations,                2.37 MiB
 //
-// A shorter interval buys the speed back only part way: at 4 the table is
-// 2.82 MiB and a read is 77 ns, still allocating, because every read has to
-// materialise a string that slicing the blob gives away for free. An address
-// resolves eleven strings, or five once cities and prefectures are cached, so
-// even the best case turns a 90 ns lookup into several hundred.
+// The interval is not the decision. Giving up the expanded blob costs 14x on
+// its own, and no interval avoids the allocations, because a replayed string
+// has to be materialised where slicing the blob gives it away. Moving between
+// intervals after that only slides along a shallow curve.
 //
-// That is the wrong trade for a package whose point is fast offline lookup, so
-// the option stays unexercised. Keeping the restart points open costs 20 KiB of
-// the 1.67 MiB file, which is cheap enough to leave the door on its hinges.
+// At the public API that is a 90 ns lookup becoming 480 ns and nine
+// allocations, and a full scan going from 8.7 ms to 57 ms, to hold 5.0 MiB
+// instead of 7.2 MiB. Wrong trade for a package whose point is fast offline
+// lookup, so the option stays unexercised — but keeping the restart points open
+// costs 20 KiB of the 1.67 MiB file, cheap enough to leave the door on its
+// hinges.
 const stringRestartInterval = 64
 
 // The widths the codes are rendered at. A value beyond these would be printed
