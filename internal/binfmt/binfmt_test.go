@@ -16,7 +16,7 @@ func sample() *Dataset {
 			{Name: Name{Kanji: "札幌市中央区", Kana: "サッポロシチュウオウク", Romaji: "Sapporo-shi Chuo-ku"}, JIS: 1101, Pref: 0},
 		},
 		Records: []Record{
-			{Zip: 600042, City: 1, Town: Name{Kanji: "大通西", Kana: "オオドオリニシ", Romaji: "Odorinishi"}, Note: "１〜１９丁目"},
+			{Zip: 600042, City: 1, Town: Name{Kanji: "大通西", Kana: "オオドオリニシ", Romaji: "Odorinishi"}, Note: "１〜１９丁目", NoteKana: "１−１９チョウメ"},
 			{Zip: 1000001, City: 0, Town: Name{Kanji: "千代田", Kana: "チヨダ", Romaji: "Chiyoda"}},
 			{Zip: 1000005, City: 0, Town: Name{Kanji: "丸の内", Kana: "マルノウチ", Romaji: "Marunochi"}, Flags: FlagRomajiEstimated},
 			{Zip: 1000005, City: 0, Town: Name{Kanji: "", Kana: "", Romaji: ""}},
@@ -63,8 +63,8 @@ func TestRoundTrip(t *testing.T) {
 			t.Errorf("record %d zip = %d, want %d", i, got.Zip, want.Zip)
 		case got.Town != want.Town:
 			t.Errorf("record %d town = %v, want %v", i, got.Town, want.Town)
-		case got.Note != want.Note:
-			t.Errorf("record %d note = %q, want %q", i, got.Note, want.Note)
+		case got.Note != want.Note || got.NoteKana != want.NoteKana:
+			t.Errorf("record %d note = %q/%q, want %q/%q", i, got.Note, got.NoteKana, want.Note, want.NoteKana)
 		case got.Flags != want.Flags:
 			t.Errorf("record %d flags = %d, want %d", i, got.Flags, want.Flags)
 		case got.JIS != city.JIS:
@@ -204,6 +204,7 @@ func TestCheckRejectsOutOfRangeIndices(t *testing.T) {
 			recKana:   []uint32{0},
 			recRomaji: []uint32{0},
 			recNote:   []uint32{0},
+			recNoteKn: []uint32{0},
 			recFlags:  []uint8{0},
 		}
 	}
@@ -214,6 +215,7 @@ func TestCheckRejectsOutOfRangeIndices(t *testing.T) {
 	tests := map[string]func(*Store){
 		"record string":     func(s *Store) { s.recKanji[0] = 2 },
 		"record note":       func(s *Store) { s.recNote[0] = 99 },
+		"record note kana":  func(s *Store) { s.recNoteKn[0] = 99 },
 		"record city":       func(s *Store) { s.recCity[0] = 7 },
 		"city string":       func(s *Store) { s.cities[0].kana = 2 },
 		"city prefecture":   func(s *Store) { s.cities[0].pref = PrefectureCount },

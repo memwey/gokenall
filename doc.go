@@ -24,6 +24,15 @@
 // every case, because katakana does not record which is meant. Display
 // Name.Romaji; use Transliterate to match romaji somebody typed.
 //
+// # Nothing is discarded
+//
+// Japan Post files some codes under a municipality rather than a town, with
+// prose where the name would go, and annotates some town names in parentheses.
+// This package moves both out of [Address.Town] so that names compare and
+// display cleanly — but it keeps them, in [Address.Note], and
+// [Address.RawTown] puts the original columns back together. The generator
+// checks that round trip on every record of every build.
+//
 // # Data
 //
 // Addresses and readings come from Japan Post's 郵便番号データ (1レコード1行、

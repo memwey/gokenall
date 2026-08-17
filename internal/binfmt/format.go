@@ -20,7 +20,7 @@ const Magic = "UKEN"
 
 // Version is the format revision. Decode rejects anything else, so bumping it
 // forces a regenerated data file rather than a silent misparse.
-const Version = 1
+const Version = 2
 
 // HeaderSize is the number of uncompressed bytes preceding the flate stream.
 const HeaderSize = len(Magic) + 1
@@ -56,9 +56,12 @@ type City struct {
 // Record is one line of the zip code database.
 type Record struct {
 	Town Name
-	// Note is the parenthesised annotation stripped from the raw town name,
-	// empty for the vast majority of records.
-	Note string
+	// Note is the annotation stripped from the raw town name, in kanji and in
+	// kana, empty for the vast majority of records. For a record whose town is
+	// a placeholder rather than a name, it holds that placeholder instead, so
+	// nothing Japan Post publishes is discarded.
+	Note     string
+	NoteKana string
 	// Zip is the 7 digit code as a number, e.g. 1000001. Leading zeroes are
 	// implied by the fixed width.
 	Zip uint32

@@ -40,6 +40,72 @@ func TestAddressFormatting(t *testing.T) {
 	}
 }
 
+func TestRawTown(t *testing.T) {
+	tests := []struct {
+		code       string
+		kanji      string
+		kana       string
+		annotation string
+	}{
+		{
+			code:  "100-0001",
+			kanji: "千代田", kana: "チヨダ",
+			annotation: "no annotation, so the name is the whole column",
+		},
+		{
+			code:  "060-0042",
+			kanji: "大通西（１〜１９丁目）", kana: "オオドオリニシ（１−１９チョウメ）",
+			annotation: "the annotation goes back where it came from",
+		},
+		{
+			code:  "060-0000",
+			kanji: "以下に掲載がない場合", kana: "イカニケイサイガナイバアイ",
+			annotation: "the placeholder occupied the whole column",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.annotation, func(t *testing.T) {
+			a, err := utfkenall.Lookup(tt.code)
+			if err != nil {
+				t.Fatal(err)
+			}
+			kanji, kana := a.RawTown()
+			if kanji != tt.kanji || kana != tt.kana {
+				t.Errorf("RawTown() = %q, %q; want %q, %q", kanji, kana, tt.kanji, tt.kana)
+			}
+		})
+	}
+}
+
+// Japan Post never publishes a blank town column, so a blank result would mean
+// this package had thrown the original away somewhere.
+func TestRawTownIsNeverEmpty(t *testing.T) {
+	for a := range utfkenall.All() {
+		kanji, kana := a.RawTown()
+		if kanji == "" || kana == "" {
+			t.Fatalf("%s: RawTown() = %q, %q", a.Code, kanji, kana)
+		}
+	}
+}
+
+func TestNoteIsAPlaceholderExactlyWhenTownIsEmpty(t *testing.T) {
+	// RawTown relies on this to tell the two kinds of note apart.
+	var placeholders int
+	for a := range utfkenall.All() {
+		if a.Town.Kanji != "" {
+			continue
+		}
+		placeholders++
+		if a.Note.Kanji == "" {
+			t.Fatalf("%s has neither a town nor a placeholder", a.Code)
+		}
+	}
+	if placeholders == 0 {
+		t.Error("no placeholder records at all, which cannot be right")
+	}
+	t.Logf("%d of %d records are placeholders", placeholders, utfkenall.Len())
+}
+
 func TestNameString(t *testing.T) {
 	n := utfkenall.Name{Kanji: "千代田区", Kana: "チヨダク", Romaji: "Chiyoda-ku"}
 	if got := n.String(); got != "千代田区" {

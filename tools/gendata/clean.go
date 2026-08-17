@@ -21,29 +21,37 @@ var (
 	noteInnerRe = regexp.MustCompile(`^（(.*)）$`)
 )
 
-// noiseNoteRe matches annotations that say nothing about the place: 「その他」
-// (the leftovers of a split town), 「地階・階層不明」 (a building's unnumbered
-// floors), and 「…を除く」 exclusion lists.
-var noiseNoteRe = regexp.MustCompile(`^その他$|^地階・階層不明$|を除く$`)
-
 // cleanedTown is a town name with Japan Post's editorial notes lifted out.
+//
+// Nothing the source publishes is dropped along the way: whatever leaves the
+// name lands in Note, so the original columns can be put back together.
 type cleanedTown struct {
 	Kanji string
 	Kana  string
-	// Note is the annotation that followed the name, e.g. "１〜１９丁目".
-	// Empty when there was none or when it carried no information.
+	// Note is the annotation that followed the name with its parentheses
+	// removed, e.g. "１〜１９丁目". For a placeholder — a record whose town
+	// column holds prose rather than a name — it is that prose instead, and
+	// Kanji is empty. Empty for the vast majority of records.
 	Note string
+	// NoteKana is Note's reading. Japan Post sometimes annotates the kanji
+	// column and not the kana one, so it can be empty while Note is not.
+	NoteKana string
 }
 
 // cleanTown rewrites the raw town columns into something usable: placeholders
-// become empty, and a trailing 「（…）」 moves out of the name into Note.
+// move out of the name, and so does a trailing 「（…）」.
 //
 // Ranges such as 「（１〜１９丁目）」 are deliberately left as a note rather than
 // expanded into one record per 丁目. Expanding invents zip code entries that
 // Japan Post never published, and callers that want them can read Note.
+//
+// Annotations that say nothing about the place — 「その他」, 「地階・階層不明」 —
+// are kept too. Filtering them here would be the one place this package threw
+// source text away, and a caller can ignore a note far more easily than it can
+// recover one.
 func cleanTown(kanji, kana string) cleanedTown {
 	if placeholderRe.MatchString(kanji) {
-		return cleanedTown{}
+		return cleanedTown{Note: kanji, NoteKana: kana}
 	}
 
 	note := noteRe.FindString(kanji)
@@ -55,8 +63,13 @@ func cleanTown(kanji, kana string) cleanedTown {
 		Kanji: strings.TrimSuffix(kanji, note),
 		Kana:  noteRe.ReplaceAllString(kana, ""),
 	}
-	if inner := noteInnerRe.FindStringSubmatch(note); inner != nil && !noiseNoteRe.MatchString(inner[1]) {
+	if inner := noteInnerRe.FindStringSubmatch(note); inner != nil {
 		out.Note = inner[1]
+	}
+	if kanaNote := noteRe.FindString(kana); kanaNote != "" {
+		if inner := noteInnerRe.FindStringSubmatch(kanaNote); inner != nil {
+			out.NoteKana = inner[1]
+		}
 	}
 	return out
 }
@@ -101,4 +114,22 @@ var romeNoteRe = regexp.MustCompile(`（[^）]*）?$`)
 
 func stripRomeNoteKanji(s string) (string, bool) {
 	return romeName(s, '（', romeKanjiWidth, romeNoteRe)
+}
+
+// rejoin puts the town columns back the way Japan Post published them. It is
+// the inverse of cleanTown and mirrors utfkenall.Address.RawTown; build checks
+// every record against it, so a cleaning rule that quietly ate text fails the
+// build rather than shipping.
+func rejoin(c cleanedTown) (kanji, kana string) {
+	switch {
+	case c.Kanji == "":
+		return c.Note, c.NoteKana
+	case c.Note == "":
+		return c.Kanji, c.Kana
+	}
+	kana = c.Kana
+	if c.NoteKana != "" {
+		kana += "（" + c.NoteKana + "）"
+	}
+	return c.Kanji + "（" + c.Note + "）", kana
 }

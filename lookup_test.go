@@ -34,6 +34,7 @@ func TestLookup(t *testing.T) {
 				JISCode:    "01101",
 				Prefecture: utfkenall.Name{Kanji: "北海道", Kana: "ホッカイドウ", Romaji: "Hokkaido"},
 				City:       utfkenall.Name{Kanji: "札幌市中央区", Kana: "サッポロシチュウオウク", Romaji: "Sapporo-shi Chuo-ku"},
+				Note:       utfkenall.Annotation{Kanji: "以下に掲載がない場合", Kana: "イカニケイサイガナイバアイ"},
 			},
 		},
 		{
@@ -45,7 +46,7 @@ func TestLookup(t *testing.T) {
 				Prefecture: utfkenall.Name{Kanji: "北海道", Kana: "ホッカイドウ", Romaji: "Hokkaido"},
 				City:       utfkenall.Name{Kanji: "札幌市中央区", Kana: "サッポロシチュウオウク", Romaji: "Sapporo-shi Chuo-ku"},
 				Town:       utfkenall.Name{Kanji: "大通西", Kana: "オオドオリニシ", Romaji: "Odorinishi"},
-				Note:       "１〜１９丁目",
+				Note:       utfkenall.Annotation{Kanji: "１〜１９丁目", Kana: "１−１９チョウメ"},
 			},
 		},
 		{

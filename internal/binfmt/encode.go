@@ -108,6 +108,7 @@ func intern(d *Dataset) *stringTable {
 	for _, r := range d.Records {
 		addName(r.Town)
 		set[r.Note] = struct{}{}
+		set[r.NoteKana] = struct{}{}
 	}
 
 	tab := &stringTable{
@@ -179,6 +180,9 @@ func marshal(d *Dataset, tab *stringTable) []byte {
 	}
 	for _, r := range d.Records {
 		buf = binary.AppendUvarint(buf, uint64(tab.id(r.Note)))
+	}
+	for _, r := range d.Records {
+		buf = binary.AppendUvarint(buf, uint64(tab.id(r.NoteKana)))
 	}
 	for _, r := range d.Records {
 		buf = append(buf, r.Flags)

@@ -122,12 +122,20 @@ func build(ken []kenRow, rome []romeRow, kenDate, romeDate time.Time) (*binfmt.D
 			return nil, st, fmt.Errorf("zip code %q is not 7 digits", row.Zip)
 		}
 		town := cleanTown(row.Town, row.TownKana)
+		// The point of keeping placeholders and annotations rather than
+		// dropping them is that the source columns stay recoverable. Check it
+		// on every record of every build, not just on the cases in the tests.
+		if k, ka := rejoin(town); k != row.Town || ka != row.TownKana {
+			return nil, st, fmt.Errorf("zip %s: cleaning is not reversible: %q/%q became %q/%q",
+				row.Zip, row.Town, row.TownKana, k, ka)
+		}
 
 		rec := binfmt.Record{
-			Zip:  uint32(zip),
-			City: cityIndex[row.JIS],
-			Note: town.Note,
-			Town: binfmt.Name{Kanji: town.Kanji, Kana: town.Kana},
+			Zip:      uint32(zip),
+			City:     cityIndex[row.JIS],
+			Note:     town.Note,
+			NoteKana: town.NoteKana,
+			Town:     binfmt.Name{Kanji: town.Kanji, Kana: town.Kana},
 		}
 		if town.Kanji == "" {
 			st.EmptyTown++

@@ -19,6 +19,19 @@ type Name struct {
 // String returns the kanji form.
 func (n Name) String() string { return n.Kanji }
 
+// Annotation is a remark Japan Post attaches to a record rather than a place
+// name of its own, so it has a reading but no romaji.
+type Annotation struct {
+	// Kanji is the remark as published, e.g. １〜１９丁目.
+	Kanji string
+	// Kana is its reading. Japan Post sometimes annotates only the kanji
+	// column, so this can be empty while Kanji is not.
+	Kana string
+}
+
+// String returns the kanji form.
+func (n Annotation) String() string { return n.Kanji }
+
 // Address is one entry of the zip code database: a prefecture, a municipality,
 // and — unless Japan Post files the code under the municipality as a whole — a
 // town.
@@ -36,11 +49,19 @@ type Address struct {
 	// placeholders, which this package reports as no town at all.
 	Town Name
 
-	// Note is the parenthesised annotation Japan Post appends to some town
-	// names, with the parentheses removed — "１〜１９丁目" for 大通西（１〜１９丁目）.
-	// It is empty for the vast majority of addresses. The annotation is kept
-	// out of Town so that names compare and display cleanly.
-	Note string
+	// Note is what Japan Post filed alongside — or instead of — the town name,
+	// with any parentheses removed. It is empty for the vast majority of
+	// addresses. Town says which of the two it is:
+	//
+	//	Town named    an annotation that followed it, "１〜１９丁目"
+	//	              for 大通西（１〜１９丁目）
+	//	Town empty    the placeholder filed in place of a name,
+	//	              "以下に掲載がない場合"
+	//
+	// The annotation is kept out of Town so that names compare and display
+	// cleanly, but it is never discarded: [Address.RawTown] puts the original
+	// columns back together.
+	Note Annotation
 
 	// RomajiEstimated reports that Town.Romaji was transliterated from Kana
 	// rather than taken from Japan Post's romaji dataset, which is republished
@@ -66,6 +87,32 @@ func (a Address) English() string {
 	return strings.Join(parts, ", ")
 }
 
+// RawTown returns the town columns exactly as Japan Post publishes them,
+// before this package moves placeholders and annotations out of the name:
+//
+//	Lookup("060-0042") // Town 大通西, Note １〜１９丁目
+//	                   // RawTown 大通西（１〜１９丁目）
+//	Lookup("060-0000") // Town empty, Note 以下に掲載がない場合
+//	                   // RawTown 以下に掲載がない場合
+//
+// Nothing is reconstructed approximately: the parts are stored as they were
+// read, so this is the original text.
+func (a Address) RawTown() (kanji, kana string) {
+	switch {
+	case a.Town.Kanji == "":
+		// A placeholder occupied the whole column.
+		return a.Note.Kanji, a.Note.Kana
+	case a.Note.Kanji == "":
+		return a.Town.Kanji, a.Town.Kana
+	}
+	kanji = a.Town.Kanji + "（" + a.Note.Kanji + "）"
+	kana = a.Town.Kana
+	if a.Note.Kana != "" {
+		kana += "（" + a.Note.Kana + "）"
+	}
+	return kanji, kana
+}
+
 func newAddress(e binfmt.Entry) Address {
 	return Address{
 		Code:            digits(e.Zip, 7),
@@ -73,7 +120,7 @@ func newAddress(e binfmt.Entry) Address {
 		Prefecture:      name(e.Prefecture),
 		City:            name(e.City),
 		Town:            name(e.Town),
-		Note:            e.Note,
+		Note:            Annotation{Kanji: e.Note, Kana: e.NoteKana},
 		RomajiEstimated: e.Flags&binfmt.FlagRomajiEstimated != 0,
 	}
 }

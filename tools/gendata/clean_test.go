@@ -16,19 +16,22 @@ func TestCleanTown(t *testing.T) {
 			want:  cleanedTown{Kanji: "千代田", Kana: "チヨダ"},
 		},
 		{
-			name:  "以下に掲載がない場合 is a placeholder",
+			name:  "以下に掲載がない場合 is a placeholder, kept as a note",
 			kanji: "以下に掲載がない場合",
 			kana:  "イカニケイサイガナイバアイ",
+			want:  cleanedTown{Note: "以下に掲載がない場合", NoteKana: "イカニケイサイガナイバアイ"},
 		},
 		{
 			name:  "の次に番地がくる場合 is a placeholder",
 			kanji: "境町の次に番地がくる場合",
 			kana:  "サカイマチノツギニバンチガクルバアイ",
+			want:  cleanedTown{Note: "境町の次に番地がくる場合", NoteKana: "サカイマチノツギニバンチガクルバアイ"},
 		},
 		{
 			name:  "村一円 is a placeholder",
 			kanji: "利島村一円",
 			kana:  "トシマムライチエン",
+			want:  cleanedTown{Note: "利島村一円", NoteKana: "トシマムライチエン"},
 		},
 		{
 			name:  "一円 on its own is a real town in 滋賀県犬上郡多賀町",
@@ -37,22 +40,40 @@ func TestCleanTown(t *testing.T) {
 			want:  cleanedTown{Kanji: "一円", Kana: "イチエン"},
 		},
 		{
-			name:  "その他 says nothing and is dropped entirely",
+			// Uninformative, but kept: a caller can ignore a note far more
+			// easily than it can recover one.
+			name:  "その他 says nothing about the place but is still kept",
 			kanji: "岩倉上蔵町（その他）",
 			kana:  "イワクラアグラチョウ（ソノタ）",
-			want:  cleanedTown{Kanji: "岩倉上蔵町", Kana: "イワクラアグラチョウ"},
+			want: cleanedTown{
+				Kanji: "岩倉上蔵町", Kana: "イワクラアグラチョウ",
+				Note: "その他", NoteKana: "ソノタ",
+			},
 		},
 		{
-			name:  "地階・階層不明 is dropped entirely",
+			name:  "地階・階層不明 likewise",
 			kanji: "阿倍野筋あべのハルカス（地階・階層不明）",
 			kana:  "アベノスジアベノハルカス（チカイ・カイソウフメイ）",
-			want:  cleanedTown{Kanji: "阿倍野筋あべのハルカス", Kana: "アベノスジアベノハルカス"},
+			want: cleanedTown{
+				Kanji: "阿倍野筋あべのハルカス", Kana: "アベノスジアベノハルカス",
+				Note: "地階・階層不明", NoteKana: "チカイ・カイソウフメイ",
+			},
 		},
 		{
-			name:  "を除く exclusions are dropped entirely",
+			name:  "an exclusion list likewise",
 			kanji: "阿倍野筋（次のビルを除く）",
 			kana:  "アベノスジ（ツギノビルヲノゾク）",
-			want:  cleanedTown{Kanji: "阿倍野筋", Kana: "アベノスジ"},
+			want: cleanedTown{
+				Kanji: "阿倍野筋", Kana: "アベノスジ",
+				Note: "次のビルを除く", NoteKana: "ツギノビルヲノゾク",
+			},
+		},
+		{
+			// 166 records annotate the kanji column and not the kana one.
+			name:  "an annotation on the kanji side only",
+			kanji: "曙町（１〜3丁目）",
+			kana:  "アケボノチョウ",
+			want:  cleanedTown{Kanji: "曙町", Kana: "アケボノチョウ", Note: "１〜3丁目"},
 		},
 		{
 			name:  "a floor is kept as a note",
@@ -61,7 +82,7 @@ func TestCleanTown(t *testing.T) {
 			want: cleanedTown{
 				Kanji: "阿倍野筋あべのハルカス",
 				Kana:  "アベノスジアベノハルカス",
-				Note:  "６０階",
+				Note:  "６０階", NoteKana: "６０カイ",
 			},
 		},
 		{
@@ -73,7 +94,7 @@ func TestCleanTown(t *testing.T) {
 			want: cleanedTown{
 				Kanji: "天神橋",
 				Kana:  "テンジンバシ",
-				Note:  "１〜６丁目",
+				Note:  "１〜６丁目", NoteKana: "１−６チョウメ",
 			},
 		},
 		{
@@ -83,15 +104,21 @@ func TestCleanTown(t *testing.T) {
 			want: cleanedTown{
 				Kanji: "大通西",
 				Kana:  "オオドオリニシ",
-				Note:  "１〜１９丁目",
+				Note:  "１〜１９丁目", NoteKana: "１−１９チョウメ",
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := cleanTown(tt.kanji, tt.kana); got != tt.want {
-				t.Errorf("cleanTown(%q, %q)\n got %#v\nwant %#v", tt.kanji, tt.kana, got, tt.want)
+			got := cleanTown(tt.kanji, tt.kana)
+			if got != tt.want {
+				t.Fatalf("cleanTown(%q, %q)\n got %#v\nwant %#v", tt.kanji, tt.kana, got, tt.want)
+			}
+			// Whatever left the name must still be recoverable from what is
+			// stored, or the data file would not be a faithful copy.
+			if k, _ := rejoin(got); k != tt.kanji {
+				t.Errorf("cleanTown lost text: rejoined to %q, want %q", k, tt.kanji)
 			}
 		})
 	}

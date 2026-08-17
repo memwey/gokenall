@@ -29,6 +29,7 @@ type Store struct {
 	recKana   []uint32
 	recRomaji []uint32
 	recNote   []uint32
+	recNoteKn []uint32
 	recFlags  []uint8
 
 	kenAllUpdated time.Time
@@ -49,6 +50,7 @@ type Entry struct {
 	City       Name
 	Town       Name
 	Note       string
+	NoteKana   string
 	Zip        uint32
 	JIS        uint32
 	Flags      uint8
@@ -140,6 +142,7 @@ func unmarshal(payload []byte) (*Store, error) {
 	s.recKana = c.uint32s(n)
 	s.recRomaji = c.uint32s(n)
 	s.recNote = c.uint32s(n)
+	s.recNoteKn = c.uint32s(n)
 	s.recFlags = make([]uint8, n)
 	for i := range s.recFlags {
 		s.recFlags[i] = c.byte()
@@ -159,7 +162,7 @@ func unmarshal(payload []byte) (*Store, error) {
 func (s *Store) check() error {
 	maxStr := uint32(len(s.strOff) - 1)
 	for i, id := range s.recKanji {
-		if id >= maxStr || s.recKana[i] >= maxStr || s.recRomaji[i] >= maxStr || s.recNote[i] >= maxStr {
+		if id >= maxStr || s.recKana[i] >= maxStr || s.recRomaji[i] >= maxStr || s.recNote[i] >= maxStr || s.recNoteKn[i] >= maxStr {
 			return fmt.Errorf("binfmt: record %d references a string out of range", i)
 		}
 		if int(s.recCity[i]) >= len(s.cities) {
@@ -214,10 +217,11 @@ func (s *Store) At(i int) Entry {
 			Kana:   s.str(s.recKana[i]),
 			Romaji: s.str(s.recRomaji[i]),
 		},
-		Note:  s.str(s.recNote[i]),
-		Zip:   s.zips[i],
-		JIS:   city.jis,
-		Flags: s.recFlags[i],
+		Note:     s.str(s.recNote[i]),
+		NoteKana: s.str(s.recNoteKn[i]),
+		Zip:      s.zips[i],
+		JIS:      city.jis,
+		Flags:    s.recFlags[i],
 	}
 }
 

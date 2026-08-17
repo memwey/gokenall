@@ -49,22 +49,41 @@ Codes may be written any of the ways people write them — `1000001`,
 Anything else is `ErrInvalidCode`; a well-formed code Japan Post does not
 publish is `ErrNotFound`.
 
-### `Town` is sometimes empty
+### `Town` is sometimes empty, and `Note` says why
 
-Japan Post files some codes under a municipality as a whole rather than a town,
-using placeholder text where the town name would go — 「以下に掲載がない場合」,
-「○○市の次に番地がくる場合」, 「○○村一円」. This package reports those as no town
-at all, so `Town.Kanji == ""` rather than a sentence pretending to be a place.
+Japan Post uses the town column for two things that are not town names. Some
+codes cover a municipality as a whole, and get prose where the name would go —
+「以下に掲載がない場合」, 「○○市の次に番地がくる場合」, 「○○村一円」. Others carry a
+parenthesised annotation: 大通西（１〜１９丁目）.
 
-### `Note` holds the parenthetical
+Both move out of `Town` so that names compare and display cleanly, and both
+land in `Note`. `Town` tells you which is which:
 
-Some town names carry an annotation: 大通西（１〜１９丁目）. The name and the
-annotation are kept apart, so `Town.Kanji` is `大通西` and `Note` is
-`１〜１９丁目`. Annotations that say nothing about the place — 「その他」,
-「地階・階層不明」, 「…を除く」 — are dropped.
+| | `Town` | `Note` |
+|---|---|---|
+| 大通西（１〜１９丁目） | `大通西` | `１〜１９丁目` |
+| 以下に掲載がない場合 | *empty* | `以下に掲載がない場合` |
+| 千代田 | `千代田` | *empty* |
 
 Ranges are **not** expanded into one record per 丁目. That would invent zip code
 entries Japan Post never published; if you want them, `Note` has what you need.
+
+### Nothing is discarded
+
+Uninformative annotations are kept too — 「その他」, 「地階・階層不明」 — because a
+caller can ignore a note far more easily than it can recover one. `RawTown`
+puts the source columns back together:
+
+```go
+a, _ := utfkenall.Lookup("060-0042")
+a.Town.Kanji   // 大通西
+a.Note.Kanji   // １〜１９丁目
+a.RawTown()    // 大通西（１〜１９丁目）, オオドオリニシ（１−１９チョウメ）
+```
+
+This is not an approximate reconstruction: the pieces are stored as they were
+read, and the generator asserts the round trip on all 124,513 records of every
+build. Keeping the annotations and their readings costs about 30 KiB.
 
 ### Two romaji spellings
 
@@ -131,10 +150,11 @@ Measured on an Apple M1, 124,513 records:
 
 | | |
 |---|---|
-| added to your binary | 2.1 MiB |
-| `Lookup` | 137 ns, 2 allocations |
+| added to your binary | 2.2 MiB |
+| `Lookup` | 98 ns, 2 allocations |
+| `Transliterate` | 436 ns, 4 allocations |
 | first lookup, or `Load()` | 59 ms |
-| resident afterwards | 7.5 MiB |
+| resident afterwards | 8.0 MiB |
 
 The database is one DEFLATE stream decoded on first use. Every name is a slice
 of a single shared string, so reading a record allocates nothing beyond the two
