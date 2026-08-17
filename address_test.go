@@ -40,6 +40,34 @@ func TestAddressFormatting(t *testing.T) {
 	}
 }
 
+func TestPublishedPrefectureRomaji(t *testing.T) {
+	tests := []struct {
+		code, conventional, published string
+	}{
+		{"100-0001", "Tokyo", "TOKYO TO"},
+		{"370-0000", "Gunma", "GUMMA KEN"},
+		{"060-0000", "Hokkaido", "HOKKAIDO"},
+	}
+	for _, tt := range tests {
+		a, err := utfkenall.Lookup(tt.code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := a.Prefecture.Romaji; got != tt.conventional {
+			t.Errorf("%s conventional romaji = %q, want %q", tt.code, got, tt.conventional)
+		}
+		if got := a.PublishedPrefectureRomaji(); got != tt.published {
+			t.Errorf("%s published romaji = %q, want %q", tt.code, got, tt.published)
+		}
+	}
+	if got, ok := utfkenall.PublishedPrefectureRomaji("東京都"); !ok || got != "TOKYO TO" {
+		t.Errorf("PublishedPrefectureRomaji(東京都) = %q, %v", got, ok)
+	}
+	if got, ok := utfkenall.PublishedPrefectureRomaji("架空県"); ok || got != "" {
+		t.Errorf("PublishedPrefectureRomaji(架空県) = %q, %v; want empty, false", got, ok)
+	}
+}
+
 func TestRawTown(t *testing.T) {
 	tests := []struct {
 		code       string

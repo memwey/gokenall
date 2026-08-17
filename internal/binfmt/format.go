@@ -19,7 +19,7 @@ const Magic = "UKEN"
 
 // Version is the format revision. Decode rejects anything else, so bumping it
 // forces a regenerated data file rather than a silent misparse.
-const Version = 3
+const Version = 4
 
 // HeaderSize is the number of uncompressed bytes preceding the flate stream.
 const HeaderSize = len(Magic) + 1
@@ -88,7 +88,10 @@ type Dataset struct {
 	KenAllUpdated time.Time
 	RomeUpdated   time.Time
 	Prefectures   [PrefectureCount]Name
-	Cities        []City
+	// PrefectureSourceRomaji is the spelling from KEN_ALL_ROME.CSV, before the
+	// public API substitutes conventional English names such as Tokyo and Gunma.
+	PrefectureSourceRomaji [PrefectureCount]string
+	Cities                 []City
 	// Records must be sorted by Zip ascending. Records sharing a zip code stay
 	// in the order given, which is the order Japan Post publishes them in.
 	Records []Record

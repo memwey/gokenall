@@ -72,15 +72,24 @@ type romajiIndex struct {
 	// for the looser second-tier match.
 	byZip  map[string][]string
 	cities map[[2]string]string
+	// prefectures keeps the exact spelling from KEN_ALL_ROME.CSV. The public
+	// Name.Romaji uses conventional English instead, but the source value must
+	// remain available to callers that need fidelity to Japan Post's file.
+	prefectures map[string]string
 }
 
-func newRomajiIndex(rows []romeRow) *romajiIndex {
+func newRomajiIndex(rows []romeRow) (*romajiIndex, error) {
 	ix := &romajiIndex{
-		towns:  make(map[townKey]string, len(rows)),
-		byZip:  make(map[string][]string, len(rows)),
-		cities: make(map[[2]string]string, 2000),
+		towns:       make(map[townKey]string, len(rows)),
+		byZip:       make(map[string][]string, len(rows)),
+		cities:      make(map[[2]string]string, 2000),
+		prefectures: make(map[string]string, 47),
 	}
 	for _, r := range rows {
+		if previous, ok := ix.prefectures[r.Pref]; ok && previous != r.PrefRomaji {
+			return nil, fmt.Errorf("prefecture %q has conflicting romaji %q and %q", r.Pref, previous, r.PrefRomaji)
+		}
+		ix.prefectures[r.Pref] = r.PrefRomaji
 		// The city columns are never long enough to be cut, so they are taken
 		// as-is even from a record whose town half is a fragment.
 		ix.cities[[2]string{r.Pref, r.City}] = r.CityRomaji
@@ -99,10 +108,15 @@ func newRomajiIndex(rows []romeRow) *romajiIndex {
 			ix.byZip[r.Zip] = append(ix.byZip[r.Zip], romaji)
 		}
 	}
-	return ix
+	return ix, nil
 }
 
 func (ix *romajiIndex) city(pref, city string) (string, bool) {
 	v, ok := ix.cities[[2]string{pref, city}]
 	return v, ok
+}
+
+func (ix *romajiIndex) prefecture(pref string) (string, bool) {
+	v, ok := ix.prefectures[pref]
+	return v, ok && v != ""
 }

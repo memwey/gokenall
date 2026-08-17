@@ -60,6 +60,11 @@ func Encode(w io.Writer, d *Dataset) (Stats, error) {
 }
 
 func validate(d *Dataset) error {
+	for i, romaji := range d.PrefectureSourceRomaji {
+		if romaji == "" {
+			return fmt.Errorf("binfmt: prefecture %d has no source romaji", i)
+		}
+	}
 	if len(d.Cities) > math.MaxUint16 {
 		return fmt.Errorf("binfmt: %d cities exceeds the uint16 record field", len(d.Cities))
 	}
@@ -105,8 +110,9 @@ func intern(d *Dataset) *stringTable {
 		set[n.Kana] = struct{}{}
 		set[n.Romaji] = struct{}{}
 	}
-	for _, n := range d.Prefectures {
+	for i, n := range d.Prefectures {
 		addName(n)
+		set[d.PrefectureSourceRomaji[i]] = struct{}{}
 	}
 	for _, c := range d.Cities {
 		addName(c.Name)
@@ -156,10 +162,11 @@ func marshal(d *Dataset, tab *stringTable) []byte {
 		previous = s
 	}
 
-	for _, n := range d.Prefectures {
+	for i, n := range d.Prefectures {
 		buf = binary.AppendUvarint(buf, uint64(tab.id(n.Kanji)))
 		buf = binary.AppendUvarint(buf, uint64(tab.id(n.Kana)))
 		buf = binary.AppendUvarint(buf, uint64(tab.id(n.Romaji)))
+		buf = binary.AppendUvarint(buf, uint64(tab.id(d.PrefectureSourceRomaji[i])))
 	}
 
 	buf = binary.AppendUvarint(buf, uint64(len(d.Cities)))

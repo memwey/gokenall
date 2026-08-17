@@ -38,6 +38,7 @@ standard library.
 | `Lookup(code) (Address, error)` | the address for a zip code |
 | `LookupAll(code) ([]Address, error)` | every address under it — a few thousand codes cover more than one town |
 | `Prefectures() []Name` | all 47, in JIS X0401 order |
+| `PublishedPrefectureRomaji(kanji) (string, bool)` | Japan Post's original prefecture spelling |
 | `All() iter.Seq[Address]` | every address, ordered by code |
 | `Len() int` | how many there are |
 | `DataUpdated() (addresses, romaji time.Time)` | when Japan Post last published each source |
@@ -132,9 +133,11 @@ agrees with Japan Post on **99.93%** of the 81,278 towns where both publish a
 spelling, and writes `Marunochi` in all twelve cities that have a 丸の内. The 56
 disagreements are all over whether 町 reads *-cho* or *-machi*.
 
-Prefecture names are the one place this package departs from the source: those
-use the conventional English forms (`Tokyo`, `Gunma`) rather than `TOKYO TO` and
-the archaic `GUMMA`.
+`Prefecture.Romaji` uses conventional English forms (`Tokyo`, `Gunma`) rather
+than Japan Post's `TOKYO TO` and the archaic `GUMMA KEN`. The source spelling
+is preserved rather than discarded: call `addr.PublishedPrefectureRomaji()` or
+`PublishedPrefectureRomaji("東京都")` when exact fidelity to
+`KEN_ALL_ROME.CSV` matters.
 
 The romaji file is revised far less often than the addresses, so it lacks the
 newest codes. Those are transliterated from katakana instead and marked with
@@ -153,7 +156,7 @@ Measured on an Apple M1, 124,513 records:
 | embedded database | 1.67 MiB |
 | added to a stripped binary | 2.3 MiB |
 | `Lookup` | 96 ns, 2 allocations |
-| `Transliterate` | 436 ns, 4 allocations |
+| `Transliterate` | 313 ns, 4 allocations |
 | first lookup, or `Load()` | 54 ms cold, 31 ms warm |
 | resident afterwards | 7.2 MiB |
 
@@ -186,8 +189,8 @@ stays out of every program that imports the library. `-cache <dir>` keeps the
 downloads for a second run, `-v` lists where the transliterator and Japan Post
 disagree.
 
-A scheduled workflow runs this monthly and opens a pull request when the data
-has moved.
+The manually triggered `update-data` workflow rebuilds the database and opens
+a pull request when the data has moved.
 
 ## Credits
 

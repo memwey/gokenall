@@ -72,6 +72,17 @@ func Prefectures() []Name {
 	return out
 }
 
+// PublishedPrefectureRomaji returns the prefecture spelling exactly as Japan
+// Post publishes it in KEN_ALL_ROME.CSV. The argument is the kanji name, such
+// as "東京都". The boolean is false when it is not one of the 47 prefectures.
+//
+// [Name.Romaji] on values returned by [Prefectures] remains the conventional
+// English form intended for addresses, such as "Tokyo" rather than the
+// published "TOKYO TO".
+func PublishedPrefectureRomaji(kanji string) (string, bool) {
+	return mustLoad().PublishedPrefectureRomaji(kanji)
+}
+
 // All iterates every address in the database, ordered by zip code.
 func All() iter.Seq[Address] {
 	return func(yield func(Address) bool) {

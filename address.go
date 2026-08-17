@@ -87,6 +87,16 @@ func (a Address) English() string {
 	return strings.Join(parts, ", ")
 }
 
+// PublishedPrefectureRomaji returns the prefecture spelling exactly as Japan
+// Post publishes it in KEN_ALL_ROME.CSV. It differs from
+// a.Prefecture.Romaji, which is the conventional English form used by
+// [Address.English]: Tokyo is published as "TOKYO TO", and Gunma as
+// "GUMMA KEN".
+func (a Address) PublishedPrefectureRomaji() string {
+	romaji, _ := PublishedPrefectureRomaji(a.Prefecture.Kanji)
+	return romaji
+}
+
 // RawTown returns the town columns exactly as Japan Post publishes them,
 // before this package moves placeholders and annotations out of the name:
 //

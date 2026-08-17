@@ -41,7 +41,10 @@ const hepburnSamples = 20
 
 // build turns the two parsed datasets into the structure the encoder writes.
 func build(ken []kenRow, rome []romeRow, kenDate, romeDate time.Time) (*binfmt.Dataset, buildStats, error) {
-	ix := newRomajiIndex(rome)
+	ix, err := newRomajiIndex(rome)
+	if err != nil {
+		return nil, buildStats{Rows: len(ken)}, err
+	}
 	d := &binfmt.Dataset{KenAllUpdated: kenDate, RomeUpdated: romeDate}
 	st := buildStats{Rows: len(ken)}
 
@@ -59,7 +62,12 @@ func build(ken []kenRow, rome []romeRow, kenDate, romeDate time.Time) (*binfmt.D
 		if err != nil {
 			return nil, st, err
 		}
+		published, ok := ix.prefecture(row.Pref)
+		if !ok {
+			return nil, st, fmt.Errorf("no published romaji for prefecture %q", row.Pref)
+		}
 		d.Prefectures[code] = binfmt.Name{Kanji: row.Pref, Kana: row.PrefKana, Romaji: romaji}
+		d.PrefectureSourceRomaji[code] = published
 		seenPref[code] = true
 	}
 	for i, ok := range seenPref {

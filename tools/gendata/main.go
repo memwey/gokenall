@@ -184,6 +184,12 @@ func verify(path string, d *binfmt.Dataset) error {
 	if store.Len() != len(d.Records) {
 		return fmt.Errorf("verify %s: decoded %d records, encoded %d", path, store.Len(), len(d.Records))
 	}
+	for i, pref := range d.Prefectures {
+		got, ok := store.PublishedPrefectureRomaji(pref.Kanji)
+		if !ok || got != d.PrefectureSourceRomaji[i] {
+			return fmt.Errorf("verify %s: prefecture %q source romaji is %q, %v; encoded %q", path, pref.Kanji, got, ok, d.PrefectureSourceRomaji[i])
+		}
+	}
 	for i := range d.Records {
 		got, want := store.At(i), d.Records[i]
 		city := d.Cities[want.City]

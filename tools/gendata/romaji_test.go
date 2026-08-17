@@ -78,7 +78,13 @@ func TestRomajiIndexSkipsTruncatedRecords(t *testing.T) {
 			PrefRomaji: "HOKKAIDO", CityRomaji: "ASAHIKAWA SHI",
 			TownRomaji: "HIGASHIASAHIKAWACHO HIGASHISAKURAOK"},
 	}
-	ix := newRomajiIndex(rows)
+	ix, err := newRomajiIndex(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := ix.prefecture("東京都"); !ok || got != "TOKYO TO" {
+		t.Errorf("published prefecture romaji = %q, %v; want TOKYO TO", got, ok)
+	}
 
 	if got := ix.towns[townKey{"1000001", "東京都", "千代田区", "千代田"}]; got != "CHIYODA" {
 		t.Errorf("complete record indexed as %q, want CHIYODA", got)
@@ -93,5 +99,15 @@ func TestRomajiIndexSkipsTruncatedRecords(t *testing.T) {
 	// from a record whose town half is a fragment.
 	if got, ok := ix.city("北海道", "旭川市"); !ok || got != "ASAHIKAWA SHI" {
 		t.Errorf("city romaji = %q, %v; want ASAHIKAWA SHI", got, ok)
+	}
+}
+
+func TestRomajiIndexRejectsConflictingPrefectureSpellings(t *testing.T) {
+	rows := []romeRow{
+		{Pref: "群馬県", PrefRomaji: "GUMMA KEN"},
+		{Pref: "群馬県", PrefRomaji: "GUNMA KEN"},
+	}
+	if _, err := newRomajiIndex(rows); err == nil {
+		t.Fatal("newRomajiIndex accepted conflicting source spellings")
 	}
 }

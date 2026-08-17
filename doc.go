@@ -14,10 +14,12 @@
 //
 // # Two romaji spellings
 //
-// [Name.Romaji] is Japan Post's own spelling, which leaves long vowels
-// unmarked. That is the ordinary English convention (東京 is Tokyo, not Tōkyō),
-// but applied mechanically it misreads a vowel pair that spans a word
-// boundary: 丸の内 is maru-no-uchi, and they publish Marunochi.
+// [Name.Romaji] normally derives from Japan Post's spelling, which leaves long
+// vowels unmarked. That is the ordinary English convention (東京 is Tokyo, not
+// Tōkyō), but applied mechanically it misreads a vowel pair that spans a word
+// boundary: 丸の内 is maru-no-uchi, and they publish Marunochi. Prefectures use
+// conventional English names for display; [Address.PublishedPrefectureRomaji]
+// and [PublishedPrefectureRomaji] retain Japan Post's exact source spelling.
 //
 // [Transliterate] gives the other reading of the same katakana, spelling out
 // every kana — Marunouchi, but also Toukyou. Neither convention is right in
