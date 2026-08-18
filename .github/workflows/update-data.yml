@@ -1,0 +1,45 @@
+name: Update data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Rebuild the embedded database
+        run: go generate ./...
+
+      - name: Check the rebuilt database
+        run: go test ./...
+
+      - name: Open a pull request if anything changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- data/kenall.bin; then
+            echo "Japan Post has published nothing new since the last run."
+            exit 0
+          fi
+
+          branch="data/$(date -u +%Y-%m)"
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git add data/kenall.bin
+          git commit -m "Update the embedded zip code database"
+          git push --force origin "$branch"
+
+          gh pr create --base "${{ github.ref_name }}" --head "$branch" \
+            --title "Update the embedded zip code database" \
+            --body "Regenerated from Japan Post by the manually triggered \`update-data\` workflow." \
+            || gh pr edit "$branch" --body "Regenerated from Japan Post by the manually triggered \`update-data\` workflow."

@@ -98,3 +98,7 @@ dist/
 vendor/
 .vendor-new/
 tmp/
+
+# Compiled generator, from `go build ./tools/gendata/...`
+/gendata
+/tools/gendata/gendata

@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['stable', 'oldstable']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - run: go build ./... ./tools/gendata/...
+      - run: go vet ./... ./tools/gendata/...
+      - run: go test -race ./... ./tools/gendata/...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: |
+          test -z "$(gofmt -l . | tee /dev/stderr)" || {
+            echo "::error::gofmt reported the files above"; exit 1;
+          }
+      - run: go run honnef.co/go/tools/cmd/staticcheck@latest ./... ./tools/gendata/...
+
+  # The embedded database must stay readable by the format version this build
+  # expects; a bumped binfmt.Version with a stale data file fails here.
+  data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go test -run 'TestLoad|TestEveryAddressIsWellFormed|TestDataUpdated' -v ./
