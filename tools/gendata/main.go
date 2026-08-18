@@ -113,7 +113,7 @@ func run(out, cache string, offline bool, timeout time.Duration) error {
 	logf("  payload %s -> file %s (%.1f%%)", humanBytes(encStats.PayloadBytes), humanBytes(encStats.FileBytes),
 		100*float64(encStats.FileBytes)/float64(encStats.PayloadBytes))
 
-	if err := verify(tmp, d); err != nil {
+	if err := verify(tmp, d, ken); err != nil {
 		os.Remove(tmp)
 		return err
 	}
@@ -165,9 +165,11 @@ func publicationDate(scraped, override time.Time, earliest time.Time, what, flag
 	return scraped, nil
 }
 
-// verify reads the file back through the decoder, so a run that reports success
-// has actually produced something the library can load.
-func verify(path string, d *binfmt.Dataset) error {
+// verify reads the file back through the decoder and checks it against both the
+// structure that was encoded and the rows Japan Post published, so a run that
+// reports success has produced something the library can load and something
+// that still says what the source said.
+func verify(path string, d *binfmt.Dataset, source []kenRow) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -200,7 +202,52 @@ func verify(path string, d *binfmt.Dataset) error {
 		}
 	}
 
-	logf("verified: %d records reload in %s", store.Len(), elapsed.Round(time.Millisecond))
+	if err := verifyAgainstSource(store, source); err != nil {
+		return fmt.Errorf("verify %s: %w", path, err)
+	}
+
+	logf("verified: %d records reload in %s and reproduce every source row", store.Len(), elapsed.Round(time.Millisecond))
+	return nil
+}
+
+// verifyAgainstSource rebuilds each published row from the decoded database and
+// checks the two multisets are equal. Records come out sorted by zip code and
+// the source is in municipality-code order, so they cannot be compared in step.
+//
+// This is what stops the tests from being circular: every other check compares
+// the database against values read out of the same database, and would happily
+// enshrine a systematic misreading of the CSV.
+func verifyAgainstSource(store *binfmt.Store, source []kenRow) error {
+	want := make(map[kenRow]int, len(source))
+	for _, row := range source {
+		want[row]++
+	}
+	for i := range store.Len() {
+		e := store.At(i)
+		kanji, kana := rejoin(cleanedTown{
+			Kanji: e.Town.Kanji, Kana: e.Town.Kana,
+			Note: e.Note, NoteKana: e.NoteKana,
+		})
+		got := kenRow{
+			JIS:      fmt.Sprintf("%05d", e.JIS),
+			Zip:      fmt.Sprintf("%07d", e.Zip),
+			PrefKana: e.Prefecture.Kana,
+			CityKana: e.City.Kana,
+			TownKana: kana,
+			Pref:     e.Prefecture.Kanji,
+			City:     e.City.Kanji,
+			Town:     kanji,
+		}
+		if want[got] == 0 {
+			return fmt.Errorf("record %d reads back as %+v, which Japan Post does not publish", i, got)
+		}
+		want[got]--
+	}
+	for row, n := range want {
+		if n > 0 {
+			return fmt.Errorf("%d source rows are missing from the database, e.g. %+v", n, row)
+		}
+	}
 	return nil
 }
 

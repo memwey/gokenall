@@ -115,6 +115,44 @@ func TestLookupNotFound(t *testing.T) {
 	}
 }
 
+// Japan Post publishes organisation codes as a separate dataset, which this
+// package does not carry. That is a boundary worth stating rather than a gap
+// to discover: somebody looking up a company gets ErrNotFound, not a wrong
+// address.
+func TestOrganisationCodesAreNotHere(t *testing.T) {
+	for _, tt := range []struct{ code, who string }{
+		{"100-8111", "宮内庁"},
+		{"163-8001", "東京都庁"},
+	} {
+		if _, err := utfkenall.Lookup(tt.code); !errors.Is(err, utfkenall.ErrNotFound) {
+			t.Errorf("Lookup(%q), the %s code, gave %v; want ErrNotFound", tt.code, tt.who, err)
+		}
+	}
+}
+
+// Well-known addresses, checkable by anyone against Japan Post's own search
+// page. Every other golden value in this package was read out of the database
+// it is meant to be testing; these did not come from there.
+func TestLandmarks(t *testing.T) {
+	for _, tt := range []struct{ code, want string }{
+		{"100-0001", "東京都千代田区千代田"},
+		{"530-0001", "大阪府大阪市北区梅田"},
+		{"460-0001", "愛知県名古屋市中区三の丸"},
+		{"060-0001", "北海道札幌市中央区北一条西"},
+		{"900-0001", "沖縄県那覇市港町"},
+		{"907-1801", "沖縄県八重山郡与那国町与那国"},
+	} {
+		a, err := utfkenall.Lookup(tt.code)
+		if err != nil {
+			t.Errorf("Lookup(%q): %v", tt.code, err)
+			continue
+		}
+		if got := a.String(); got != tt.want {
+			t.Errorf("Lookup(%q) = %q, want %q", tt.code, got, tt.want)
+		}
+	}
+}
+
 func TestLookupAll(t *testing.T) {
 	// 498-0000 straddles a prefecture border: Japan Post files it under both
 	// 愛知県弥富市 and 三重県桑名郡木曽岬町.

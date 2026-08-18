@@ -47,8 +47,16 @@ standard library.
 
 Codes may be written any of the ways people write them — `1000001`,
 `100-0001`, `〒100-0001`, `１００−０００１` — as long as they hold seven digits.
-Anything else is `ErrInvalidCode`; a well-formed code Japan Post does not
-publish is `ErrNotFound`.
+Anything else is `ErrInvalidCode`; a well-formed code this database has no
+address for is `ErrNotFound`.
+
+### Organisation codes are not here
+
+Japan Post issues a second kind of code to organisations that receive enough
+mail to warrant one — 事業所個別郵便番号, about 22,000 of them, published as the
+separate `jigyosyo.zip` dataset. `100-8111` is the Imperial Household Agency and
+`163-8001` is the Tokyo Metropolitan Government; neither resolves here. Only the
+124,513 住所の郵便番号 that name a place are included.
 
 ### `Town` is sometimes empty, and `Note` says why
 

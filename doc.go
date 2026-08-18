@@ -37,6 +37,14 @@
 // [Address.RawTown] puts the original columns back together. The generator
 // checks that round trip on every record of every build.
 //
+// # What is not here
+//
+// Japan Post issues a second kind of code to organisations that receive enough
+// mail to warrant one — 事業所個別郵便番号, about 22,000 of them, published as a
+// separate dataset. 100-8111 is the Imperial Household Agency and 163-8001 is
+// the Tokyo Metropolitan Government; neither is in this package, and looking
+// one up gives [ErrNotFound]. Only the 住所の郵便番号 that name a place are here.
+//
 // # Data
 //
 // Addresses and readings come from Japan Post's 郵便番号データ (1レコード1行、

@@ -7,8 +7,10 @@ import (
 )
 
 var (
-	// ErrNotFound means the code is well formed but Japan Post does not
-	// publish an address for it.
+	// ErrNotFound means the code is well formed but this database has no
+	// address for it. Note that Japan Post issues codes to large organisations
+	// separately, and those are not included here — see the package
+	// documentation.
 	ErrNotFound = errors.New("utfkenall: zip code not found")
 
 	// ErrInvalidCode means the argument is not a 7 digit zip code.
