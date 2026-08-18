@@ -162,7 +162,7 @@ Measured on an Apple M1, 124,513 records:
 | | |
 |---|---|
 | embedded database | 1.67 MiB |
-| added to a binary | 1.9 MiB |
+| added to a stripped binary | 2.3 MiB |
 | `Lookup` | 90 ns, 2 allocations |
 | `Transliterate` | 300 ns, 4 allocations |
 | first lookup, or `Load()` | 44 ms |
